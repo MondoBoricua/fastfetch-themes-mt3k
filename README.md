@@ -98,7 +98,23 @@ Place it in the appropriate category folder (`Large-Themes/`, `Small-Themes/`, o
 
 - [fastfetch](https://github.com/fastfetch-cli/fastfetch)
 - Bash
+- Nerd Fonts (for icons)
 - For Visual themes: terminal with image support (Kitty, WezTerm, iTerm2, etc.)
+
+### Installing Nerd Fonts
+
+The themes use Nerd Font icons. Install a Nerd Font and set it in your terminal.
+
+**Arch Linux (AUR):**
+```bash
+git clone https://aur.archlinux.org/ttf-meslo-nerd-font-powerlevel10k.git
+cd ttf-meslo-nerd-font-powerlevel10k
+makepkg -si
+cd ..
+```
+
+**Other distros / macOS / Windows:**
+Download from [Nerd Fonts](https://www.nerdfonts.com/font-downloads) (recommended: Meslo, JetBrains Mono, or FiraCode)
 
 ## Credits
 
