@@ -27,7 +27,7 @@ A collection of 52 themes for [fastfetch](https://github.com/fastfetch-cli/fastf
 # Linux (Arch): pacman -S fastfetch
 # macOS: brew install fastfetch
 
-git clone https://github.com/YOUR_USER/fastfetch-themes-mt3k.git
+git clone https://github.com/MondoBoricua/fastfetch-themes-mt3k.git
 cd fastfetch-themes-mt3k
 chmod +x fastfetch-themes-mt3k
 ./fastfetch-themes-mt3k
@@ -39,7 +39,7 @@ chmod +x fastfetch-themes-mt3k
 # Install fastfetch first
 winget install Fastfetch
 
-git clone https://github.com/YOUR_USER/fastfetch-themes-mt3k.git
+git clone https://github.com/MondoBoricua/fastfetch-themes-mt3k.git
 cd fastfetch-themes-mt3k
 .\fastfetch-themes-mt3k.ps1
 ```
