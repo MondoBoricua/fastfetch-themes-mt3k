@@ -79,7 +79,7 @@ When selecting a Visual theme, you'll be prompted to choose an image protocol:
 
 ## Adding New Themes
 
-Create a folder with this structure:
+The script **auto-detects** any new theme you add. Just create a folder with this structure:
 
 ```
 YourTheme/
@@ -88,7 +88,12 @@ YourTheme/
     └── logo.txt (or image.png for visual themes)
 ```
 
-Place it in the appropriate category folder (`Large-Themes/`, `Small-Themes/`, or `Visuals-Themes/`) and the script will detect it automatically.
+Drop it in the appropriate category folder:
+- `Large-Themes/` - ASCII art (big)
+- `Small-Themes/` - ASCII art (compact)
+- `Visuals-Themes/` - Image-based themes
+
+Run the script and your theme will appear in the menu automatically. No code changes needed.
 
 ## Screenshots
 
