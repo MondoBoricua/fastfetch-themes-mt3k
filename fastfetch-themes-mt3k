@@ -259,7 +259,7 @@ main() {
                 sleep 0.5
                 ;;
             *)
-                local idx=$((choice-1))
+                local idx=$((10#$choice-1))
                 if [[ $idx -ge 0 && $idx -lt ${#THEMES[@]} ]]; then
                     # Check if visual theme - prompt for protocol first
                     if [[ "${THEME_TYPES[$idx]}" == "Visuals-Themes" ]]; then
