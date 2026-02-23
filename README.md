@@ -9,6 +9,13 @@ A collection of 52 themes for [fastfetch](https://github.com/fastfetch-cli/fastf
 - **Single script** - replaces multiple scripts from original
 - **Visual themes** - full image protocol support (kitty, iterm, sixel)
 - **Backup/Restore** - never lose your current config
+- **Preview mode** - test themes without changing your config
+- **Search** - find themes by name
+- **Random theme** - feeling lucky? pick a random theme
+- **Nerd Fonts installer** - download and install popular Nerd Fonts
+- **Kitty installer** - install Kitty terminal for image support
+- **Shell auto-start** - configure fastfetch to run on terminal open
+- **Dependency checks** - auto-detect and install fastfetch if missing
 
 ## Theme Categories
 
@@ -23,7 +30,7 @@ A collection of 52 themes for [fastfetch](https://github.com/fastfetch-cli/fastf
 ### Linux / macOS
 
 ```bash
-# Install fastfetch first
+# Install fastfetch first (or let the script do it for you!)
 # Linux (Arch): pacman -S fastfetch
 # macOS: brew install fastfetch
 
@@ -36,7 +43,7 @@ chmod +x fastfetch-themes-mt3k
 ### Windows (PowerShell)
 
 ```powershell
-# Install fastfetch first
+# Install fastfetch first (or let the script do it for you!)
 winget install Fastfetch
 
 git clone https://github.com/MondoBoricua/fastfetch-themes-mt3k.git
@@ -63,6 +70,12 @@ cd fastfetch-themes-mt3k
 | `1-52` | Select theme by number |
 | `b` | Backup current config |
 | `r` | Restore last backup |
+| `p` | Preview a theme without applying |
+| `d` | Apply a random theme |
+| `/` | Search themes by name |
+| `f` | Install Nerd Fonts |
+| `k` | Install Kitty terminal |
+| `s` | Setup shell auto-start |
 | `x` | Exit |
 
 ### Image Protocols (Visual Themes)
@@ -76,6 +89,45 @@ When selecting a Visual theme, you'll be prompted to choose an image protocol:
 | `kitty-direct` | WezTerm, Warp, Kitty, Ghostty (fastest) |
 | `iterm` | iTerm2, WezTerm, Konsole |
 | `sixel` | foot, Contour |
+
+### Nerd Fonts Installer `[f]`
+
+Download and install popular Nerd Fonts directly from the script:
+
+- JetBrainsMono (recommended)
+- Meslo
+- FiraCode
+- Hack
+- CascadiaCode
+- UbuntuMono
+- SourceCodePro
+
+### Kitty Terminal Installer `[k]`
+
+Install the Kitty GPU-accelerated terminal with image support:
+
+**Linux/macOS:**
+- Package manager (pacman, apt, dnf, zypper, brew, nix)
+- Official installer script from kovidgoyal.net (recommended)
+- Flatpak
+
+**Windows:**
+- winget (recommended)
+- scoop
+- Chocolatey
+- GitHub release download
+
+### Shell Auto-Start `[s]`
+
+Configure fastfetch to run automatically when you open a terminal:
+
+- **Bash** (~/.bashrc)
+- **Zsh** (~/.zshrc)
+- **Fish** (~/.config/fish/config.fish)
+- **PowerShell** (Windows profile)
+- **Git Bash** (Windows ~/.bashrc)
+
+Run the option again to remove auto-start.
 
 ## Adding New Themes
 
@@ -101,25 +153,10 @@ Run the script and your theme will appear in the menu automatically. No code cha
 
 ## Requirements
 
-- [fastfetch](https://github.com/fastfetch-cli/fastfetch)
-- Bash
-- Nerd Fonts (for icons)
-- For Visual themes: terminal with image support (Kitty, WezTerm, iTerm2, etc.)
-
-### Installing Nerd Fonts
-
-The themes use Nerd Font icons. Install a Nerd Font and set it in your terminal.
-
-**Arch Linux (AUR):**
-```bash
-git clone https://aur.archlinux.org/ttf-meslo-nerd-font-powerlevel10k.git
-cd ttf-meslo-nerd-font-powerlevel10k
-makepkg -si
-cd ..
-```
-
-**Other distros / macOS / Windows:**
-Download from [Nerd Fonts](https://www.nerdfonts.com/font-downloads) (recommended: Meslo, JetBrains Mono, or FiraCode)
+- [fastfetch](https://github.com/fastfetch-cli/fastfetch) (auto-installed if missing)
+- Bash (Linux/macOS) or PowerShell (Windows)
+- Nerd Fonts (installable via `[f]` option)
+- For Visual themes: terminal with image support like Kitty (installable via `[k]` option)
 
 ## Credits
 
