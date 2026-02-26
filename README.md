@@ -103,6 +103,7 @@ cd fastfetch-themes-mt3k
 - 🔤 **Nerd Fonts installer** (7 popular fonts)
 - 🐱 **Kitty installer** — GPU terminal
 - 🐚 **Shell auto-start** setup
+- 💀 **Hacker Mode** — terminal hacker layout
 - 🔔 **Desktop notifications**
 
 </td>
@@ -186,7 +187,7 @@ Launch the interactive menu and use these keys:
 |  `/`  | 🔎 Search themes       | `i` | ℹ️ Theme info         |
 |  `f`  | 🔤 Install Nerd Fonts  | `u` | 🔄 Update themes      |
 |  `k`  | 🐱 Install Kitty       | `s` | 🐚 Shell auto-start   |
-|  `x`  | 🚪 Exit                |     |                       |
+|  `m`  | 💀 Hacker Mode         | `x` | 🚪 Exit               |
 
 ---
 
@@ -241,6 +242,45 @@ Install the GPU-accelerated Kitty terminal for image protocol support:
 - 🥄 scoop
 - 🍫 Chocolatey
 - 📥 GitHub release download
+
+</details>
+
+<details>
+<summary><h3>💀 Hacker Mode</h3></summary>
+
+Install a terminal hacker layout with Kitty splits — cmatrix, btop, cava, tty-clock, genact, and pipes.sh all running simultaneously:
+
+```
+┌──────────────┬──────────────┐
+│              │              │
+│              │    btop      │
+│              │              │
+│   cmatrix    ├───────┬──────┤
+│              │       │clock │
+│              │ cava  ├──────┤
+│              │       │genact│
+└──────────────┴───────┴──────┘
+```
+
+**Dependencies auto-installed** via your package manager (pacman, apt, dnf, brew):
+
+| Program | What it does |
+|---------|-------------|
+| `cmatrix` | Matrix digital rain |
+| `btop` | System monitor |
+| `cava` | Audio visualizer |
+| `tty-clock` | ASCII clock |
+| `genact` | Fake hacker activity |
+| `pipes.sh` | Animated pipes |
+
+**Usage after install:**
+
+```bash
+hacker-mode        # Normal window
+hacker-mode --full # Fullscreen
+```
+
+> Requires [Kitty](https://sw.kovidgoyal.net/kitty/) terminal — installable via `[k]` option.
 
 </details>
 
