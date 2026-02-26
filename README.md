@@ -4,26 +4,35 @@ A collection of 52 themes for [fastfetch](https://github.com/fastfetch-cli/fastf
 
 ## Features
 
-- **52 themes** organized in 3 categories
+- **52+ themes** organized in 3 categories
 - **Auto-detection** - finds all themes automatically
 - **Single script** - replaces multiple scripts from original
 - **Visual themes** - full image protocol support (kitty, iterm, sixel)
-- **Backup/Restore** - never lose your current config
+- **Backup/Restore** - smart backup management with auto-prune
 - **Preview mode** - test themes without changing your config
 - **Search** - find themes by name
-- **Random theme** - feeling lucky? pick a random theme
+- **Random theme** - random by category (all/large/small/visual)
+- **Favorites** - mark and quick-access your preferred themes
+- **History** - track your last 10 applied themes
+- **Category filter** - show only Large, Small, or Visual themes
+- **Slideshow** - auto-preview all themes with configurable delay
+- **Theme info** - view modules, images, size, and validation status
+- **Git updates** - pull new themes from GitHub with one keypress
+- **CLI arguments** - use without interactive menu (--apply, --list, etc.)
 - **Nerd Fonts installer** - download and install popular Nerd Fonts
 - **Kitty installer** - install Kitty terminal for image support
 - **Shell auto-start** - configure fastfetch to run on terminal open
+- **Desktop notifications** - get notified when a theme is applied
+- **JSON validation** - validate configs before applying
 - **Dependency checks** - auto-detect and install fastfetch if missing
 
 ## Theme Categories
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| Large | 31 | ASCII art logos (big) |
-| Small | 16 | ASCII art logos (compact) |
-| Visual | 5 | Image-based logos |
+| Category | Count | Description               |
+| -------- | ----- | ------------------------- |
+| Large    | 31    | ASCII art logos (big)     |
+| Small    | 16    | ASCII art logos (compact) |
+| Visual   | 7     | Image-based logos         |
 
 ## Installation
 
@@ -53,42 +62,66 @@ cd fastfetch-themes-mt3k
 
 ## Usage
 
-### Linux / macOS
-```bash
-./fastfetch-themes-mt3k
-```
+### Interactive Mode
 
-### Windows
-```powershell
+```bash
+# Linux / macOS
+./fastfetch-themes-mt3k
+
+# Windows
 .\fastfetch-themes-mt3k.ps1
 ```
 
-### Controls
+### CLI Mode (non-interactive)
 
-| Key | Action |
-|-----|--------|
-| `1-52` | Select theme by number |
-| `b` | Backup current config |
-| `r` | Restore last backup |
-| `p` | Preview a theme without applying |
-| `d` | Apply a random theme |
-| `/` | Search themes by name |
-| `f` | Install Nerd Fonts |
-| `k` | Install Kitty terminal |
-| `s` | Setup shell auto-start |
-| `x` | Exit |
+```bash
+./fastfetch-themes-mt3k --apply "Hacker"        # Apply theme by name
+./fastfetch-themes-mt3k --preview "Toga-Himiko"  # Preview without applying
+./fastfetch-themes-mt3k --random                 # Apply random theme
+./fastfetch-themes-mt3k --random visual          # Random from category
+./fastfetch-themes-mt3k --list                   # List all themes
+./fastfetch-themes-mt3k --list large             # List by category
+./fastfetch-themes-mt3k --search "hack"          # Search themes
+./fastfetch-themes-mt3k --update                 # Update from git
+./fastfetch-themes-mt3k --favorites              # Show favorites
+./fastfetch-themes-mt3k --history                # Show history
+./fastfetch-themes-mt3k --version                # Show version
+./fastfetch-themes-mt3k --help                   # Show help
+```
+
+### Interactive Controls
+
+| Key   | Action                                             |
+| ----- | -------------------------------------------------- |
+| `1-N` | Select theme by number                             |
+| `b`   | Backup current config (auto-prunes to 5 max)       |
+| `r`   | Restore from backup (choose from list)             |
+| `p`   | Preview a theme without applying                   |
+| `d`   | Random theme (by category: all/large/small/visual) |
+| `/`   | Search themes by name                              |
+| `f`   | Install Nerd Fonts                                 |
+| `k`   | Install Kitty terminal                             |
+| `s`   | Setup shell auto-start                             |
+| `u`   | Update themes via git pull                         |
+| `v`   | Favorites menu                                     |
+| `+`   | Toggle favorite for a theme                        |
+| `h`   | Show theme history (last 10)                       |
+| `c`   | Filter by category (Large/Small/Visual/All)        |
+| `w`   | Slideshow mode (auto-preview all themes)           |
+| `i`   | Theme info (modules, images, validation)           |
+| `x`   | Exit                                               |
 
 ### Image Protocols (Visual Themes)
 
 When selecting a Visual theme, you'll be prompted to choose an image protocol:
 
-| Protocol | Supported Terminals |
-|----------|---------------------|
-| `auto` | Kitty, Ghostty (auto-detect) |
-| `kitty` | Kitty |
+| Protocol       | Supported Terminals                     |
+| -------------- | --------------------------------------- |
+| `auto`         | Kitty, Ghostty (auto-detect)            |
+| `kitty`        | Kitty                                   |
 | `kitty-direct` | WezTerm, Warp, Kitty, Ghostty (fastest) |
-| `iterm` | iTerm2, WezTerm, Konsole |
-| `sixel` | foot, Contour |
+| `iterm`        | iTerm2, WezTerm, Konsole                |
+| `sixel`        | foot, Contour                           |
 
 ### Nerd Fonts Installer `[f]`
 
@@ -107,11 +140,13 @@ Download and install popular Nerd Fonts directly from the script:
 Install the Kitty GPU-accelerated terminal with image support:
 
 **Linux/macOS:**
+
 - Package manager (pacman, apt, dnf, zypper, brew, nix)
 - Official installer script from kovidgoyal.net (recommended)
 - Flatpak
 
 **Windows:**
+
 - winget (recommended)
 - scoop
 - Chocolatey
@@ -141,6 +176,7 @@ YourTheme/
 ```
 
 Drop it in the appropriate category folder:
+
 - `Large-Themes/` - ASCII art (big)
 - `Small-Themes/` - ASCII art (compact)
 - `Visuals-Themes/` - Image-based themes
