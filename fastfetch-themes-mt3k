@@ -353,6 +353,251 @@ BASH_EOF
 }
 
 # ──────────────────────────────────────────────────────────────
+# HACKER MODE INSTALLER
+# ──────────────────────────────────────────────────────────────
+
+install_hacker_mode() {
+    echo ""
+    echo -e "${GREEN}━━━ HACKER MODE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${WHITE}Terminal hacker layout with splits: cmatrix, btop, cava,${RESET}"
+    echo -e "${WHITE}tty-clock, genact, pipes.sh — all inside Kitty.${RESET}"
+    echo ""
+
+    # Check if kitty is installed
+    if ! command -v kitty &>/dev/null; then
+        echo -e "${YELLOW}⚠ Kitty terminal is required. Use ${GREEN}[k]${YELLOW} to install it first.${RESET}"
+        echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+        return
+    fi
+
+    # Dependencies
+    local deps=(cmatrix btop cava tty-clock genact cbonsai pipes.sh)
+    local missing=() installed=()
+
+    for dep in "${deps[@]}"; do
+        if command -v "$dep" &>/dev/null; then
+            installed+=("$dep")
+        else
+            missing+=("$dep")
+        fi
+    done
+
+    echo -e "${CYAN}Dependencies:${RESET}"
+    for dep in "${deps[@]}"; do
+        if command -v "$dep" &>/dev/null; then
+            echo -e "  ${GREEN}✓${RESET} $dep"
+        else
+            echo -e "  ${RED}✗${RESET} $dep ${GRAY}(not installed)${RESET}"
+        fi
+    done
+    echo ""
+
+    # Check if hacker-mode script exists
+    local script_installed=false
+    if command -v hacker-mode &>/dev/null || [[ -f "$HOME/.local/bin/hacker-mode" ]]; then
+        script_installed=true
+        echo -e "${GREEN}✓${RESET} hacker-mode script already installed"
+    else
+        echo -e "${RED}✗${RESET} hacker-mode script not installed"
+    fi
+    echo ""
+
+    echo -e "${GREEN}[1]${RESET} Install everything (dependencies + script)"
+    echo -e "${GREEN}[2]${RESET} Install dependencies only"
+    echo -e "${GREEN}[3]${RESET} Install script only"
+    if $script_installed; then
+        echo -e "${GREEN}[4]${RESET} Run hacker-mode now"
+    fi
+    echo -e "${RED}[x]${RESET} Cancel"
+    echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
+    echo -ne "\n${LIME}mt3k${WHITE}@${GREEN}hacker${RESET}\n${RED}▶${RESET} "
+    read -r choice
+
+    case "$choice" in
+        1) _hacker_install_deps; _hacker_install_script ;;
+        2) _hacker_install_deps ;;
+        3) _hacker_install_script ;;
+        4) if $script_installed; then
+               echo -e "${GREEN}Launching hacker-mode...${RESET}"
+               "$HOME/.local/bin/hacker-mode" &
+               sleep 1
+           fi ;;
+        x|X) return ;;
+        *) echo -e "${RED}Invalid choice${RESET}"; sleep 1; return ;;
+    esac
+    echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+}
+
+_hacker_install_deps() {
+    local deps_to_install=()
+    local pkg_names=()
+
+    # Map command names to package names per package manager
+    local deps=(cmatrix btop cava tty-clock genact cbonsai pipes.sh)
+
+    for dep in "${deps[@]}"; do
+        command -v "$dep" &>/dev/null && continue
+        deps_to_install+=("$dep")
+    done
+
+    if [[ ${#deps_to_install[@]} -eq 0 ]]; then
+        echo -e "${GREEN}✓ All dependencies already installed!${RESET}"
+        return
+    fi
+
+    echo -e "\n${CYAN}Installing: ${WHITE}${deps_to_install[*]}${RESET}\n"
+
+    if $IS_MACOS; then
+        # macOS: brew
+        if ! command -v brew &>/dev/null; then
+            echo -e "${RED}✗ Homebrew not found. Install it first: https://brew.sh${RESET}"
+            return
+        fi
+        local brew_pkgs=()
+        for dep in "${deps_to_install[@]}"; do
+            case "$dep" in
+                pipes.sh)  brew_pkgs+=("pipes-sh") ;;
+                tty-clock) brew_pkgs+=("tty-clock") ;;
+                *)         brew_pkgs+=("$dep") ;;
+            esac
+        done
+        echo -e "${CYAN}Running: brew install ${brew_pkgs[*]}${RESET}"
+        brew install "${brew_pkgs[@]}" 2>&1 | tail -5
+    elif command -v pacman &>/dev/null; then
+        # Arch / CachyOS
+        local pac_pkgs=()
+        for dep in "${deps_to_install[@]}"; do
+            case "$dep" in
+                pipes.sh)  pac_pkgs+=("pipes.sh") ;;
+                tty-clock) pac_pkgs+=("tty-clock") ;;
+                *)         pac_pkgs+=("$dep") ;;
+            esac
+        done
+        if command -v paru &>/dev/null; then
+            echo -e "${CYAN}Running: paru -S --noconfirm ${pac_pkgs[*]}${RESET}"
+            paru -S --noconfirm "${pac_pkgs[@]}" 2>&1 | tail -5
+        elif command -v yay &>/dev/null; then
+            echo -e "${CYAN}Running: yay -S --noconfirm ${pac_pkgs[*]}${RESET}"
+            yay -S --noconfirm "${pac_pkgs[@]}" 2>&1 | tail -5
+        else
+            echo -e "${CYAN}Running: sudo pacman -S --noconfirm ${pac_pkgs[*]}${RESET}"
+            sudo pacman -S --noconfirm "${pac_pkgs[@]}" 2>&1 | tail -5
+        fi
+    elif command -v apt &>/dev/null; then
+        # Debian / Ubuntu
+        local apt_pkgs=()
+        for dep in "${deps_to_install[@]}"; do
+            case "$dep" in
+                pipes.sh)  apt_pkgs+=("pipes.sh") ;;
+                tty-clock) apt_pkgs+=("tty-clock") ;;
+                genact)    echo -e "${YELLOW}⚠ genact not in apt, install via cargo: cargo install genact${RESET}"; continue ;;
+                cbonsai)   echo -e "${YELLOW}⚠ cbonsai not in apt, install via cargo: cargo install cbonsai${RESET}"; continue ;;
+                *)         apt_pkgs+=("$dep") ;;
+            esac
+        done
+        [[ ${#apt_pkgs[@]} -gt 0 ]] && { echo -e "${CYAN}Running: sudo apt install -y ${apt_pkgs[*]}${RESET}"; sudo apt install -y "${apt_pkgs[@]}" 2>&1 | tail -5; }
+    elif command -v dnf &>/dev/null; then
+        # Fedora
+        local dnf_pkgs=()
+        for dep in "${deps_to_install[@]}"; do
+            case "$dep" in
+                pipes.sh)  echo -e "${YELLOW}⚠ pipes.sh: install via git clone https://github.com/pipeseroni/pipes.sh${RESET}"; continue ;;
+                genact)    echo -e "${YELLOW}⚠ genact not in dnf, install via cargo: cargo install genact${RESET}"; continue ;;
+                cbonsai)   echo -e "${YELLOW}⚠ cbonsai not in dnf, install via cargo: cargo install cbonsai${RESET}"; continue ;;
+                *)         dnf_pkgs+=("$dep") ;;
+            esac
+        done
+        [[ ${#dnf_pkgs[@]} -gt 0 ]] && { echo -e "${CYAN}Running: sudo dnf install -y ${dnf_pkgs[*]}${RESET}"; sudo dnf install -y "${dnf_pkgs[@]}" 2>&1 | tail -5; }
+    else
+        echo -e "${RED}✗ No supported package manager found (pacman/apt/dnf/brew)${RESET}"
+        echo -e "${YELLOW}Install manually: ${deps_to_install[*]}${RESET}"
+        return
+    fi
+
+    # Verify
+    echo ""
+    local all_ok=true
+    for dep in "${deps_to_install[@]}"; do
+        if command -v "$dep" &>/dev/null; then
+            echo -e "  ${GREEN}✓${RESET} $dep installed"
+        else
+            echo -e "  ${RED}✗${RESET} $dep failed"
+            all_ok=false
+        fi
+    done
+    $all_ok && echo -e "\n${GREEN}✓ All dependencies installed!${RESET}" || echo -e "\n${YELLOW}⚠ Some dependencies failed. Install them manually.${RESET}"
+}
+
+_hacker_install_script() {
+    local bin_dir="$HOME/.local/bin"
+    local conf_dir="$HOME/.config/kitty"
+    mkdir -p "$bin_dir" "$conf_dir"
+
+    # Install session config
+    cat > "$conf_dir/hacker-session.conf" << 'SESSION_EOF'
+# Hacker Mode - Kitty session layout
+# ┌──────────────┬──────────────┐
+# │              │              │
+# │              │    btop      │
+# │              │              │
+# │   cmatrix    ├───────┬──────┤
+# │              │       │clock │
+# │              │ cava  ├──────┤
+# │              │       │genact│
+# └──────────────┴───────┴──────┘
+
+new_tab Hacker Mode
+layout splits
+
+launch --title "Matrix" sh -c "sleep 1.5 && cmatrix -b -u 4 -C green"
+launch --title "System" --location=vsplit sh -c "sleep 1.5 && btop"
+launch --title "Audio" --location=hsplit sh -c "sleep 1.5 && cava"
+launch --title "Clock" --location=vsplit sh -c "sleep 1.5 && tty-clock -s -c -C 2 -b"
+launch --title "Hacker" --location=hsplit sh -c "sleep 1.5 && genact"
+
+new_tab Pipes
+layout splits
+launch --title "Pipes" sh -c "pipes.sh -t 3 -f 30 -R"
+launch --title "Fetch" --location=vsplit sh -c "fastfetch; exec ${SHELL:-bash}"
+SESSION_EOF
+
+    # Install script
+    cat > "$bin_dir/hacker-mode" << 'SCRIPT_EOF'
+#!/bin/bash
+# hacker-mode - Layout hacker con Kitty splits
+# Tab 1: cmatrix + btop + cava + tty-clock + genact
+# Tab 2: pipes + fastfetch
+
+SESSION=~/.config/kitty/hacker-session.conf
+OPTS="--override background_opacity=0.9 --override font_size=10 --override window_padding_width=2"
+
+case "${1}" in
+    --full)
+        kitty --detach --start-as=fullscreen --session "$SESSION" $OPTS 2>/dev/null
+        ;;
+    *)
+        kitty --detach --session "$SESSION" $OPTS 2>/dev/null
+        ;;
+esac
+SCRIPT_EOF
+    chmod +x "$bin_dir/hacker-mode"
+
+    # Check PATH
+    if ! echo "$PATH" | grep -q "$bin_dir"; then
+        echo -e "${YELLOW}⚠ $bin_dir is not in your PATH${RESET}"
+        echo -e "${WHITE}  Add it with: export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}"
+    fi
+
+    echo -e "${GREEN}✓ hacker-mode installed!${RESET}"
+    echo -e "${WHITE}  Script: ${CYAN}$bin_dir/hacker-mode${RESET}"
+    echo -e "${WHITE}  Config: ${CYAN}$conf_dir/hacker-session.conf${RESET}"
+    echo ""
+    echo -e "${WHITE}  Usage:${RESET}"
+    echo -e "${CYAN}    hacker-mode${RESET}        Normal window"
+    echo -e "${CYAN}    hacker-mode --full${RESET}  Fullscreen"
+}
+
+# ──────────────────────────────────────────────────────────────
 # THEME SCANNING
 # ──────────────────────────────────────────────────────────────
 
@@ -447,6 +692,7 @@ display_themes() {
     echo -e "${MAGENTA}[f]${WHITE} Fonts  ${BLUE}[s]${WHITE} Shell    ${PINK}[d]${WHITE} Random   ${YELLOW}[/]${WHITE} Search${RESET}"
     echo -e "${ORANGE}[k]${WHITE} Kitty  ${CYAN}[u]${WHITE} Update   ${GREEN}[v]${WHITE} Favs     ${MAGENTA}[h]${WHITE} History${RESET}"
     echo -e "${LIME}[c]${WHITE} Filter ${PINK}[w]${WHITE} Slideshow ${YELLOW}[i]${WHITE} Info    ${GREEN}[+]${WHITE} Fav±${RESET}"
+    echo -e "${RED}[m]${WHITE} Hacker Mode${RESET}"
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -851,7 +1097,7 @@ main() {
             u|U) update_repo ;; v|V) favorites_menu ;;
             h|H) show_history ;; c|C) filter_menu ;;
             w|W) slideshow ;; i|I) theme_info ;;
-            +) add_favorite_prompt ;;
+            +) add_favorite_prompt ;; m|M) install_hacker_mode ;;
             ''|*[!0-9]*) echo -e "${RED}Invalid selection${RESET}"; sleep 0.5 ;;
             *)
                 local idx=$((10#$choice-1))
