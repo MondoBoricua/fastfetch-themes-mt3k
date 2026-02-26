@@ -3,11 +3,16 @@
 # fastfetch-themes-mt3k - Auto-detecting fastfetch theme selector
 # Detects themes automatically from Large-Themes, Small-Themes, and Visuals-Themes
 
-VERSION="2.0.0"
+VERSION="3.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.config/fastfetch"
+DATA_DIR="$HOME/.config/fastfetch-themes-mt3k"
+FAVORITES_FILE="$DATA_DIR/favorites.txt"
+HISTORY_FILE="$DATA_DIR/history.log"
+CURRENT_FILE="$DATA_DIR/current.txt"
+MAX_BACKUPS=5
 
-# Colors - Brutal edition
+# Colors
 RED='\033[1;31m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
@@ -23,26 +28,84 @@ DIM='\033[2m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# Selected protocol for visual themes
 LOGO_PROTOCOL=""
+CATEGORY_FILTER=""
 
-# Detect OS for sed compatibility and package manager
 IS_MACOS=false
 [[ "$(uname)" == "Darwin" ]] && IS_MACOS=true
 
-# Cross-platform sed -i wrapper
 sedi() {
-    if $IS_MACOS; then
-        sed -i '' "$@"
-    else
-        sed -i "$@"
+    if $IS_MACOS; then sed -i '' "$@"; else sed -i "$@"; fi
+}
+
+declare -a THEMES THEME_PATHS THEME_TYPES
+declare -a F_THEMES F_PATHS F_TYPES F_IDX
+
+# ──────────────────────────────────────────────────────────────
+# DATA MANAGEMENT
+# ──────────────────────────────────────────────────────────────
+
+init_data_dir() {
+    mkdir -p "$DATA_DIR"
+    [[ ! -f "$FAVORITES_FILE" ]] && touch "$FAVORITES_FILE"
+    [[ ! -f "$HISTORY_FILE" ]] && touch "$HISTORY_FILE"
+    [[ ! -f "$CURRENT_FILE" ]] && touch "$CURRENT_FILE"
+}
+
+get_current_theme() {
+    [[ -f "$CURRENT_FILE" ]] && cat "$CURRENT_FILE" 2>/dev/null || echo ""
+}
+
+save_current_theme() { echo "$1|$2" > "$CURRENT_FILE"; }
+
+add_to_history() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S')|$1|$2" >> "$HISTORY_FILE"
+    local count=$(wc -l < "$HISTORY_FILE" 2>/dev/null)
+    if [[ $count -gt 50 ]]; then
+        tail -n 50 "$HISTORY_FILE" > "$HISTORY_FILE.tmp" && mv "$HISTORY_FILE.tmp" "$HISTORY_FILE"
     fi
 }
 
-# Theme arrays
-declare -a THEMES
-declare -a THEME_PATHS
-declare -a THEME_TYPES
+is_favorite() { grep -qx "$1" "$FAVORITES_FILE" 2>/dev/null; }
+
+toggle_favorite() {
+    if is_favorite "$1"; then
+        grep -vx "$1" "$FAVORITES_FILE" > "$FAVORITES_FILE.tmp" && mv "$FAVORITES_FILE.tmp" "$FAVORITES_FILE"
+        echo -e "${YELLOW}★ Removed '$1' from favorites${RESET}"
+    else
+        echo "$1" >> "$FAVORITES_FILE"
+        echo -e "${GREEN}★ Added '$1' to favorites${RESET}"
+    fi
+    sleep 0.8
+}
+
+validate_config() {
+    local cf="$1"
+    if command -v jq &>/dev/null && [[ -f "$cf" ]]; then
+        if ! sed 's|//.*$||; /\/\*/,/\*\//d' "$cf" 2>/dev/null | jq empty 2>/dev/null; then
+            echo -e "${YELLOW}⚠ Config may have JSON issues (non-critical for fastfetch)${RESET}"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+send_notification() {
+    if command -v notify-send &>/dev/null; then
+        notify-send "$1" "$2" --icon=terminal 2>/dev/null
+    elif $IS_MACOS && command -v osascript &>/dev/null; then
+        osascript -e "display notification \"$2\" with title \"$1\"" 2>/dev/null
+    fi
+}
+
+find_theme_by_name() {
+    for ((i=0; i<${#THEMES[@]}; i++)); do
+        local ln=$(echo "${THEMES[$i]}" | tr '[:upper:]' '[:lower:]')
+        local lq=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+        if [[ "$ln" == "$lq" ]]; then echo "$i"; return 0; fi
+    done
+    return 1
+}
 
 # ──────────────────────────────────────────────────────────────
 # DEPENDENCY CHECKS
@@ -54,22 +117,14 @@ check_fastfetch() {
         echo -e "${RED}━━━ fastfetch NOT FOUND ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
         echo -e "${YELLOW}fastfetch is required but not installed.${RESET}"
         echo ""
-
         local installer=""
-        if command -v pacman &>/dev/null; then
-            installer="sudo pacman -S fastfetch"
-        elif command -v apt &>/dev/null; then
-            installer="sudo apt install fastfetch"
-        elif command -v dnf &>/dev/null; then
-            installer="sudo dnf install fastfetch"
-        elif command -v zypper &>/dev/null; then
-            installer="sudo zypper install fastfetch"
-        elif command -v brew &>/dev/null; then
-            installer="brew install fastfetch"
-        elif command -v nix-env &>/dev/null; then
-            installer="nix-env -iA nixpkgs.fastfetch"
+        if command -v pacman &>/dev/null; then installer="sudo pacman -S fastfetch"
+        elif command -v apt &>/dev/null; then installer="sudo apt install fastfetch"
+        elif command -v dnf &>/dev/null; then installer="sudo dnf install fastfetch"
+        elif command -v zypper &>/dev/null; then installer="sudo zypper install fastfetch"
+        elif command -v brew &>/dev/null; then installer="brew install fastfetch"
+        elif command -v nix-env &>/dev/null; then installer="nix-env -iA nixpkgs.fastfetch"
         fi
-
         if [[ -n "$installer" ]]; then
             echo -e "${GREEN}Detected package manager. Install with:${RESET}"
             echo -e "${CYAN}  $installer${RESET}"
@@ -80,16 +135,12 @@ check_fastfetch() {
                 echo -e "${CYAN}Running: $installer${RESET}"
                 eval "$installer"
                 if command -v fastfetch &>/dev/null; then
-                    echo -e "${GREEN}✓ fastfetch installed successfully!${RESET}"
-                    sleep 1
-                    return 0
+                    echo -e "${GREEN}✓ fastfetch installed successfully!${RESET}"; sleep 1; return 0
                 else
-                    echo -e "${RED}✗ Installation failed. Please install manually.${RESET}"
-                    exit 1
+                    echo -e "${RED}✗ Installation failed. Please install manually.${RESET}"; exit 1
                 fi
             else
-                echo -e "${YELLOW}Skipped. Please install fastfetch manually.${RESET}"
-                exit 1
+                echo -e "${YELLOW}Skipped. Please install fastfetch manually.${RESET}"; exit 1
             fi
         else
             echo -e "${RED}Could not detect package manager.${RESET}"
@@ -120,101 +171,53 @@ install_nerd_fonts() {
     echo -e "${GREEN}[a]${RESET} ALL of the above ${GRAY}- Install all 7 fonts${RESET}"
     echo -e "${RED}[x]${RESET} Cancel"
     echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
-
     local fonts=()
     echo -ne "\n${LIME}mt3k${WHITE}@${MAGENTA}fonts${RESET}\n${RED}▶${RESET} "
     read -r choice
-
     case "$choice" in
-        1) fonts=("JetBrainsMono") ;;
-        2) fonts=("Meslo") ;;
-        3) fonts=("FiraCode") ;;
-        4) fonts=("Hack") ;;
-        5) fonts=("CascadiaCode") ;;
-        6) fonts=("UbuntuMono") ;;
+        1) fonts=("JetBrainsMono") ;; 2) fonts=("Meslo") ;; 3) fonts=("FiraCode") ;;
+        4) fonts=("Hack") ;; 5) fonts=("CascadiaCode") ;; 6) fonts=("UbuntuMono") ;;
         7) fonts=("SourceCodePro") ;;
         a|A) fonts=("JetBrainsMono" "Meslo" "FiraCode" "Hack" "CascadiaCode" "UbuntuMono" "SourceCodePro") ;;
-        x|X) return ;;
-        *) echo -e "${RED}Invalid choice${RESET}"; sleep 1; return ;;
+        x|X) return ;; *) echo -e "${RED}Invalid choice${RESET}"; sleep 1; return ;;
     esac
-
-    # Check for required tools
     if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
-        echo -e "${RED}Error: curl or wget is required to download fonts.${RESET}"
-        sleep 2
-        return
+        echo -e "${RED}Error: curl or wget is required to download fonts.${RESET}"; sleep 2; return
     fi
-
     if ! command -v unzip &>/dev/null; then
-        echo -e "${RED}Error: unzip is required to extract fonts.${RESET}"
-        echo -e "${YELLOW}Install it with your package manager (e.g. sudo pacman -S unzip)${RESET}"
-        sleep 2
-        return
+        echo -e "${RED}Error: unzip is required to extract fonts.${RESET}"; sleep 2; return
     fi
-
     local font_dir="$HOME/.local/share/fonts"
     mkdir -p "$font_dir"
     local tmp_dir=$(mktemp -d)
     local base_url="https://github.com/ryanoasis/nerd-fonts/releases/latest/download"
-    local success=0
-    local fail=0
-
+    local success=0 fail=0
     for font_name in "${fonts[@]}"; do
-        local zip_url="$base_url/${font_name}.zip"
         local zip_file="$tmp_dir/${font_name}.zip"
         local extract_dir="$font_dir/${font_name}"
-
         echo -e "${CYAN}⬇ Downloading ${WHITE}${font_name} Nerd Font${CYAN}...${RESET}"
-
-        # Download
         if command -v curl &>/dev/null; then
-            curl -fsSL "$zip_url" -o "$zip_file" 2>/dev/null
+            curl -fsSL "$base_url/${font_name}.zip" -o "$zip_file" 2>/dev/null
         else
-            wget -q "$zip_url" -O "$zip_file" 2>/dev/null
+            wget -q "$base_url/${font_name}.zip" -O "$zip_file" 2>/dev/null
         fi
-
-        if [[ $? -ne 0 ]]; then
-            echo -e "${RED}  ✗ Failed to download ${font_name}${RESET}"
-            ((fail++))
-            continue
-        fi
-
-        # Extract
+        if [[ $? -ne 0 ]]; then echo -e "${RED}  ✗ Failed to download ${font_name}${RESET}"; ((fail++)); continue; fi
         mkdir -p "$extract_dir"
         unzip -oqq "$zip_file" -d "$extract_dir" 2>/dev/null
-
-        if [[ $? -ne 0 ]]; then
-            echo -e "${RED}  ✗ Failed to extract ${font_name}${RESET}"
-            ((fail++))
-            continue
-        fi
-
-        # Remove Windows-specific and license files to save space
+        if [[ $? -ne 0 ]]; then echo -e "${RED}  ✗ Failed to extract ${font_name}${RESET}"; ((fail++)); continue; fi
         find "$extract_dir" -name "*Windows*" -delete 2>/dev/null
         find "$extract_dir" -name "*.md" -delete 2>/dev/null
         find "$extract_dir" -name "LICENSE*" -delete 2>/dev/null
-
-        echo -e "${GREEN}  ✓ ${font_name} installed!${RESET}"
-        ((success++))
+        echo -e "${GREEN}  ✓ ${font_name} installed!${RESET}"; ((success++))
     done
-
-    # Update font cache
-    if command -v fc-cache &>/dev/null; then
-        echo -e "${CYAN}Refreshing font cache...${RESET}"
-        fc-cache -f "$font_dir" 2>/dev/null
-    fi
-
-    # Cleanup
+    command -v fc-cache &>/dev/null && { echo -e "${CYAN}Refreshing font cache...${RESET}"; fc-cache -f "$font_dir" 2>/dev/null; }
     rm -rf "$tmp_dir"
-
     echo ""
     echo -e "${GREEN}━━━ DONE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     echo -e "${GREEN}  ✓ $success font(s) installed${RESET}"
     [[ $fail -gt 0 ]] && echo -e "${RED}  ✗ $fail font(s) failed${RESET}"
     echo -e "${YELLOW}  ⚠ Remember to set the Nerd Font in your terminal settings!${RESET}"
-    echo ""
-    echo -e "${GREEN}Press enter to continue...${RESET}"
-    read -r
+    echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -227,135 +230,57 @@ install_kitty() {
     echo -e "${WHITE}Kitty is a GPU-accelerated terminal with image support.${RESET}"
     echo -e "${GRAY}Required for Visual themes with kitty/kitty-direct protocol.${RESET}"
     echo ""
-
-    # Check if already installed
     if command -v kitty &>/dev/null; then
         local kitty_ver=$(kitty --version 2>/dev/null | head -1)
         echo -e "${GREEN}✓ Kitty is already installed: ${CYAN}${kitty_ver}${RESET}"
-        echo ""
-        echo -e "${YELLOW}Reinstall/update anyway?${RESET}"
-        echo -ne "${WHITE}[y/N]: ${RESET}"
-        read -r yn
-        if [[ ! "$yn" =~ ^[yY]$ ]]; then
-            return
-        fi
+        echo -ne "${YELLOW}Reinstall/update anyway? ${WHITE}[y/N]: ${RESET}"
+        read -r yn; [[ ! "$yn" =~ ^[yY]$ ]] && return
     fi
-
     echo -e "${GREEN}[1]${RESET} Package manager  ${GRAY}- Use your distro's package manager${RESET}"
     echo -e "${GREEN}[2]${RESET} Official script  ${GRAY}- Latest version from kitty.sh (recommended)${RESET}"
     echo -e "${GREEN}[3]${RESET} Flatpak          ${GRAY}- Sandboxed via Flatpak${RESET}"
     echo -e "${RED}[x]${RESET} Cancel"
     echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
-
     echo -ne "\n${LIME}mt3k${WHITE}@${ORANGE}kitty${RESET}\n${RED}▶${RESET} "
     read -r choice
-
     case "$choice" in
         1)
             local installer=""
-            if command -v pacman &>/dev/null; then
-                installer="sudo pacman -S kitty"
-            elif command -v apt &>/dev/null; then
-                installer="sudo apt install kitty"
-            elif command -v dnf &>/dev/null; then
-                installer="sudo dnf install kitty"
-            elif command -v zypper &>/dev/null; then
-                installer="sudo zypper install kitty"
-            elif command -v brew &>/dev/null; then
-                installer="brew install --cask kitty"
-            elif command -v nix-env &>/dev/null; then
-                installer="nix-env -iA nixpkgs.kitty"
+            if command -v pacman &>/dev/null; then installer="sudo pacman -S kitty"
+            elif command -v apt &>/dev/null; then installer="sudo apt install kitty"
+            elif command -v dnf &>/dev/null; then installer="sudo dnf install kitty"
+            elif command -v zypper &>/dev/null; then installer="sudo zypper install kitty"
+            elif command -v brew &>/dev/null; then installer="brew install --cask kitty"
+            elif command -v nix-env &>/dev/null; then installer="nix-env -iA nixpkgs.kitty"
             fi
-
             if [[ -n "$installer" ]]; then
-                echo -e "${CYAN}Running: ${WHITE}$installer${RESET}"
-                eval "$installer"
-                if command -v kitty &>/dev/null; then
-                    echo -e "${GREEN}✓ Kitty installed successfully!${RESET}"
-                else
-                    echo -e "${RED}✗ Installation may have failed. Check output above.${RESET}"
-                fi
-            else
-                echo -e "${RED}✗ Could not detect a supported package manager.${RESET}"
-                echo -e "${YELLOW}Try option [2] for the official installer instead.${RESET}"
-            fi
-            ;;
+                echo -e "${CYAN}Running: ${WHITE}$installer${RESET}"; eval "$installer"
+                command -v kitty &>/dev/null && echo -e "${GREEN}✓ Kitty installed successfully!${RESET}" || echo -e "${RED}✗ Installation may have failed.${RESET}"
+            else echo -e "${RED}✗ Could not detect a supported package manager.${RESET}"; fi ;;
         2)
             echo -e "${CYAN}Downloading Kitty via official installer...${RESET}"
-            echo -e "${GRAY}(installs to ~/.local/kitty.app)${RESET}"
-            echo ""
-
-            if command -v curl &>/dev/null; then
-                curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
-            elif command -v wget &>/dev/null; then
-                wget -qO- https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
-            else
-                echo -e "${RED}✗ curl or wget is required for this method.${RESET}"
-                sleep 2
-                return
-            fi
-
-            # Create symlinks for desktop integration
+            if command -v curl &>/dev/null; then curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
+            elif command -v wget &>/dev/null; then wget -qO- https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
+            else echo -e "${RED}✗ curl or wget is required.${RESET}"; sleep 2; return; fi
             local kitty_bin="$HOME/.local/kitty.app/bin/kitty"
-            local kitty_kitten="$HOME/.local/kitty.app/bin/kitten"
-
             if [[ -f "$kitty_bin" ]]; then
                 mkdir -p "$HOME/.local/bin"
                 ln -sf "$kitty_bin" "$HOME/.local/bin/kitty"
-                ln -sf "$kitty_kitten" "$HOME/.local/bin/kitten" 2>/dev/null
-
-                # Desktop integration
+                ln -sf "$HOME/.local/kitty.app/bin/kitten" "$HOME/.local/bin/kitten" 2>/dev/null
                 mkdir -p "$HOME/.local/share/applications"
-                cp "$HOME/.local/kitty.app/share/applications/kitty.desktop" \
-                   "$HOME/.local/share/applications/" 2>/dev/null
-                cp "$HOME/.local/kitty.app/share/applications/kitty-open.desktop" \
-                   "$HOME/.local/share/applications/" 2>/dev/null
-
-                # Update icon path in .desktop file
-                sed -i "s|Icon=kitty|Icon=$HOME/.local/kitty.app/share/icons/hicolor/256x256/apps/kitty.png|g" \
-                    "$HOME/.local/share/applications/kitty.desktop" 2>/dev/null
-
-                echo ""
+                cp "$HOME/.local/kitty.app/share/applications/kitty.desktop" "$HOME/.local/share/applications/" 2>/dev/null
+                sed -i "s|Icon=kitty|Icon=$HOME/.local/kitty.app/share/icons/hicolor/256x256/apps/kitty.png|g" "$HOME/.local/share/applications/kitty.desktop" 2>/dev/null
                 echo -e "${GREEN}✓ Kitty installed successfully!${RESET}"
-                echo -e "${GRAY}  Binary: $kitty_bin${RESET}"
-                echo -e "${GRAY}  Symlink: ~/.local/bin/kitty${RESET}"
-
-                # Check if ~/.local/bin is in PATH
-                if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-                    echo ""
-                    echo -e "${YELLOW}⚠ ~/.local/bin is NOT in your PATH${RESET}"
-                    echo -e "${YELLOW}  Add this to your shell config:${RESET}"
-                    echo -e "${CYAN}  export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}"
-                fi
-            else
-                echo -e "${RED}✗ Installation may have failed.${RESET}"
-            fi
-            ;;
+                [[ ":$PATH:" != *":$HOME/.local/bin:"* ]] && echo -e "${YELLOW}⚠ Add ~/.local/bin to PATH${RESET}"
+            else echo -e "${RED}✗ Installation may have failed.${RESET}"; fi ;;
         3)
-            if ! command -v flatpak &>/dev/null; then
-                echo -e "${RED}✗ Flatpak is not installed on this system.${RESET}"
-                echo -e "${YELLOW}Install Flatpak first: https://flatpak.org/setup/${RESET}"
-                sleep 2
-                return
-            fi
-
+            if ! command -v flatpak &>/dev/null; then echo -e "${RED}✗ Flatpak not installed.${RESET}"; sleep 2; return; fi
             echo -e "${CYAN}Installing Kitty via Flatpak...${RESET}"
-            flatpak install -y flathub org.kde.kitty 2>/dev/null || \
-                flatpak install -y flathub net.kovidgoyal.kitty 2>/dev/null
-
-            if [[ $? -eq 0 ]]; then
-                echo -e "${GREEN}✓ Kitty installed via Flatpak!${RESET}"
-            else
-                echo -e "${RED}✗ Flatpak installation failed.${RESET}"
-            fi
-            ;;
-        x|X) return ;;
-        *) echo -e "${RED}Invalid choice${RESET}"; sleep 1; return ;;
+            flatpak install -y flathub org.kde.kitty 2>/dev/null || flatpak install -y flathub net.kovidgoyal.kitty 2>/dev/null
+            [[ $? -eq 0 ]] && echo -e "${GREEN}✓ Kitty installed!${RESET}" || echo -e "${RED}✗ Failed.${RESET}" ;;
+        x|X) return ;; *) echo -e "${RED}Invalid choice${RESET}"; sleep 1; return ;;
     esac
-
-    echo ""
-    echo -e "${GREEN}Press enter to continue...${RESET}"
-    read -r
+    echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -367,96 +292,44 @@ setup_shell() {
     echo -e "${BLUE}━━━ SHELL AUTO-START SETUP ━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     echo -e "${WHITE}This adds ${CYAN}fastfetch${WHITE} to run when you open a new terminal.${RESET}"
     echo ""
-
-    # Detect available shells
-    local shells_found=()
-    local shell_files=()
-    local shell_labels=()
-    local idx=1
-
-    # Bash
+    local shells_found=() shell_files=() idx=1
     if [[ -f "$HOME/.bashrc" ]]; then
-        shells_found+=("bash")
-        shell_files+=("$HOME/.bashrc")
-        shell_labels+=("Bash (~/.bashrc)")
-        echo -e "${GREEN}[$idx]${RESET} Bash   ${GRAY}(~/.bashrc)${RESET}"
-        ((idx++))
+        shells_found+=("bash"); shell_files+=("$HOME/.bashrc")
+        echo -e "${GREEN}[$idx]${RESET} Bash   ${GRAY}(~/.bashrc)${RESET}"; ((idx++))
     fi
-
-    # Zsh
     if [[ -f "$HOME/.zshrc" ]] || command -v zsh &>/dev/null; then
-        shells_found+=("zsh")
-        shell_files+=("$HOME/.zshrc")
-        shell_labels+=("Zsh (~/.zshrc)")
-        echo -e "${GREEN}[$idx]${RESET} Zsh    ${GRAY}(~/.zshrc)${RESET}"
-        ((idx++))
+        shells_found+=("zsh"); shell_files+=("$HOME/.zshrc")
+        echo -e "${GREEN}[$idx]${RESET} Zsh    ${GRAY}(~/.zshrc)${RESET}"; ((idx++))
     fi
-
-    # Fish
     if command -v fish &>/dev/null; then
-        local fish_config="$HOME/.config/fish/config.fish"
-        shells_found+=("fish")
-        shell_files+=("$fish_config")
-        shell_labels+=("Fish (~/.config/fish/config.fish)")
-        echo -e "${GREEN}[$idx]${RESET} Fish   ${GRAY}(~/.config/fish/config.fish)${RESET}"
-        ((idx++))
+        shells_found+=("fish"); shell_files+=("$HOME/.config/fish/config.fish")
+        echo -e "${GREEN}[$idx]${RESET} Fish   ${GRAY}(~/.config/fish/config.fish)${RESET}"; ((idx++))
     fi
-
     if [[ ${#shells_found[@]} -eq 0 ]]; then
-        echo -e "${RED}No supported shells detected (.bashrc, .zshrc, or fish)${RESET}"
-        sleep 2
-        return
+        echo -e "${RED}No supported shells detected${RESET}"; sleep 2; return
     fi
-
     echo -e "${RED}[x]${RESET} Cancel"
     echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
-
     echo -ne "\n${LIME}mt3k${WHITE}@${BLUE}shell${RESET}\n${RED}▶${RESET} "
     read -r choice
-
     [[ "$choice" =~ ^[xX]$ ]] && return
-
     if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ $choice -lt 1 ]] || [[ $choice -gt ${#shells_found[@]} ]]; then
-        echo -e "${RED}Invalid choice${RESET}"
-        sleep 1
-        return
+        echo -e "${RED}Invalid choice${RESET}"; sleep 1; return
     fi
-
-    local selected_idx=$((choice - 1))
-    local shell_name="${shells_found[$selected_idx]}"
-    local rc_file="${shell_files[$selected_idx]}"
+    local si=$((choice-1)) shell_name="${shells_found[$si]}" rc_file="${shell_files[$si]}"
     local marker="# fastfetch-themes-mt3k auto-start"
-
-    # Check if already configured
     if [[ -f "$rc_file" ]] && grep -q "$marker" "$rc_file" 2>/dev/null; then
-        echo ""
-        echo -e "${YELLOW}⚠ fastfetch auto-start is already configured in ${CYAN}$rc_file${RESET}"
-        echo -ne "${YELLOW}Remove it? ${WHITE}[y/N]: ${RESET}"
+        echo -ne "\n${YELLOW}⚠ Already configured. Remove it? ${WHITE}[y/N]: ${RESET}"
         read -r yn
         if [[ "$yn" =~ ^[yY]$ ]]; then
-            # Remove the fastfetch block
-            if [[ "$shell_name" == "fish" ]]; then
-                sedi "/$marker/,/^end$/d" "$rc_file"
-            else
-                sedi "/$marker/,/^fi$/d" "$rc_file"
-            fi
-            # Remove trailing blank lines
-            sedi -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$rc_file" 2>/dev/null
-            echo -e "${GREEN}✓ Removed fastfetch auto-start from ${CYAN}$rc_file${RESET}"
+            if [[ "$shell_name" == "fish" ]]; then sedi "/$marker/,/^end$/d" "$rc_file"
+            else sedi "/$marker/,/^fi$/d" "$rc_file"; fi
+            echo -e "${GREEN}✓ Removed fastfetch auto-start${RESET}"
         fi
-        sleep 1.5
-        return
+        sleep 1.5; return
     fi
-
-    # Create the rc file if it doesn't exist
-    if [[ ! -f "$rc_file" ]]; then
-        mkdir -p "$(dirname "$rc_file")"
-        touch "$rc_file"
-    fi
-
-    # Add fastfetch to shell config
+    [[ ! -f "$rc_file" ]] && { mkdir -p "$(dirname "$rc_file")"; touch "$rc_file"; }
     echo "" >> "$rc_file"
-
     if [[ "$shell_name" == "fish" ]]; then
         cat >> "$rc_file" << 'FISH_EOF'
 # fastfetch-themes-mt3k auto-start
@@ -474,10 +347,7 @@ if command -v fastfetch &>/dev/null; then
 fi
 BASH_EOF
     fi
-
-    echo ""
-    echo -e "${GREEN}✓ fastfetch will now run when you open a new ${CYAN}${shell_name}${GREEN} terminal!${RESET}"
-    echo -e "${GRAY}  Added to: $rc_file${RESET}"
+    echo -e "\n${GREEN}✓ fastfetch will run when you open ${CYAN}${shell_name}${GREEN}!${RESET}"
     echo -e "${DIM}  (Run this option again to remove it)${RESET}"
     sleep 2
 }
@@ -487,26 +357,29 @@ BASH_EOF
 # ──────────────────────────────────────────────────────────────
 
 scan_themes() {
-    THEMES=()
-    THEME_PATHS=()
-    THEME_TYPES=()
-
+    THEMES=(); THEME_PATHS=(); THEME_TYPES=()
     for category in "Large-Themes" "Small-Themes" "Visuals-Themes"; do
         local dir="$SCRIPT_DIR/$category"
         [[ ! -d "$dir" ]] && continue
-
         for theme_dir in "$dir"/*/; do
             [[ ! -d "$theme_dir" ]] && continue
             local theme_name=$(basename "$theme_dir")
             [[ "$theme_name" == "Default" ]] && continue
-
-            # Check if it has fastfetch config
             if [[ -f "$theme_dir/fastfetch/config.jsonc" ]] || [[ -f "$theme_dir/fastfetch/config.json" ]]; then
-                THEMES+=("$theme_name")
-                THEME_PATHS+=("$theme_dir")
-                THEME_TYPES+=("$category")
+                THEMES+=("$theme_name"); THEME_PATHS+=("$theme_dir"); THEME_TYPES+=("$category")
             fi
         done
+    done
+    apply_filter
+}
+
+apply_filter() {
+    F_THEMES=(); F_PATHS=(); F_TYPES=(); F_IDX=()
+    for ((i=0; i<${#THEMES[@]}; i++)); do
+        if [[ -z "$CATEGORY_FILTER" ]] || [[ "${THEME_TYPES[$i]}" == "$CATEGORY_FILTER" ]]; then
+            F_THEMES+=("${THEMES[$i]}"); F_PATHS+=("${THEME_PATHS[$i]}")
+            F_TYPES+=("${THEME_TYPES[$i]}"); F_IDX+=($i)
+        fi
     done
 }
 
@@ -516,10 +389,8 @@ scan_themes() {
 
 get_color() {
     case "$1" in
-        "Large-Themes")  echo -e "$RED" ;;
-        "Small-Themes")  echo -e "$LIME" ;;
-        "Visuals-Themes") echo -e "$ORANGE" ;;
-        *) echo -e "$GREEN" ;;
+        "Large-Themes") echo -e "$RED" ;; "Small-Themes") echo -e "$LIME" ;;
+        "Visuals-Themes") echo -e "$ORANGE" ;; *) echo -e "$GREEN" ;;
     esac
 }
 
@@ -532,70 +403,54 @@ banner() {
     echo -e "${CYAN}|_|  \\__,_|___/\\__|_|  \\___|\\__\\___|_| |_|  ${RESET}"
     echo -e "${WHITE}        themes-mt3k ${GRAY}v${VERSION}${RESET}"
     echo ""
-
-    # Count themes per category
+    local current=$(get_current_theme)
+    if [[ -n "$current" ]]; then
+        local cur_name=$(echo "$current" | cut -d'|' -f1)
+        local cur_type=$(echo "$current" | cut -d'|' -f2)
+        local cur_color=$(get_color "$cur_type")
+        echo -e "${WHITE}  🎨 Current: ${cur_color}${cur_name} ${GRAY}(${cur_type})${RESET}"
+    fi
     local large=0 small=0 visual=0
     for t in "${THEME_TYPES[@]}"; do
-        case "$t" in
-            "Large-Themes") ((large++)) ;;
-            "Small-Themes") ((small++)) ;;
-            "Visuals-Themes") ((visual++)) ;;
-        esac
+        case "$t" in "Large-Themes") ((large++)) ;; "Small-Themes") ((small++)) ;; "Visuals-Themes") ((visual++)) ;; esac
     done
-
     echo -e "${RED}[L]${GRAY}=${RED}Large($large)  ${LIME}[S]${GRAY}=${LIME}Small($small)  ${ORANGE}[V]${GRAY}=${ORANGE}Visual($visual)  ${WHITE}Total: ${#THEMES[@]}${RESET}"
+    if [[ -n "$CATEGORY_FILTER" ]]; then
+        local fcolor=$(get_color "$CATEGORY_FILTER")
+        echo -e "${YELLOW}  ⚡ Filter: ${fcolor}${CATEGORY_FILTER}${YELLOW} (${#F_THEMES[@]} shown)${RESET}"
+    fi
     echo -e "${GRAY}────────────────────────────────────────────${RESET}"
 }
 
 display_themes() {
-    local cols=4
-    local col_width=18
-    local current_cat=""
-    local col=0
-
-    for ((i=0; i<${#THEMES[@]}; i++)); do
-        local cat="${THEME_TYPES[$i]}"
-        local color=$(get_color "$cat")
-        local num=$((i+1))
-
-        # Print category header when it changes
+    local cols=4 col_width=18 current_cat="" col=0
+    for ((i=0; i<${#F_THEMES[@]}; i++)); do
+        local cat="${F_TYPES[$i]}" color=$(get_color "${F_TYPES[$i]}") num=$((i+1))
+        local fav=""; is_favorite "${F_THEMES[$i]}" && fav="★"
         if [[ "$cat" != "$current_cat" ]]; then
-            # End previous row if needed
-            [[ $col -ne 0 ]] && echo ""
-            col=0
-            current_cat="$cat"
-
-            echo ""
+            [[ $col -ne 0 ]] && echo ""; col=0; current_cat="$cat"; echo ""
             case "$cat" in
                 "Large-Themes")   echo -e "${RED}━━━ LARGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}" ;;
                 "Small-Themes")   echo -e "${LIME}━━━ SMALL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}" ;;
                 "Visuals-Themes") echo -e "${ORANGE}━━━ VISUAL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}" ;;
             esac
         fi
-
-        # Print theme entry with fixed width
-        printf "${GREEN}[%02d]${RESET}${color}%-${col_width}s${RESET}" "$num" "${THEMES[$i]:0:$((col_width-1))}"
+        local dn="${F_THEMES[$i]:0:$((col_width-2))}${fav}"
+        printf "${GREEN}[%02d]${RESET}${color}%-${col_width}s${RESET}" "$num" "$dn"
         ((col++))
-
-        # New line after cols items
-        if (( col >= cols )); then
-            echo ""
-            col=0
-        fi
+        (( col >= cols )) && { echo ""; col=0; }
     done
-
-    # End last row if needed
     [[ $col -ne 0 ]] && echo ""
-
     echo ""
     echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     echo -e "${RED}[x]${WHITE} Exit   ${GREEN}[b]${WHITE} Backup   ${ORANGE}[r]${WHITE} Restore  ${CYAN}[p]${WHITE} Preview${RESET}"
     echo -e "${MAGENTA}[f]${WHITE} Fonts  ${BLUE}[s]${WHITE} Shell    ${PINK}[d]${WHITE} Random   ${YELLOW}[/]${WHITE} Search${RESET}"
-    echo -e "${ORANGE}[k]${WHITE} Kitty${RESET}"
+    echo -e "${ORANGE}[k]${WHITE} Kitty  ${CYAN}[u]${WHITE} Update   ${GREEN}[v]${WHITE} Favs     ${MAGENTA}[h]${WHITE} History${RESET}"
+    echo -e "${LIME}[c]${WHITE} Filter ${PINK}[w]${WHITE} Slideshow ${YELLOW}[i]${WHITE} Info    ${GREEN}[+]${WHITE} Fav±${RESET}"
 }
 
 # ──────────────────────────────────────────────────────────────
-# BACKUP / RESTORE
+# BACKUP / RESTORE (Enhanced)
 # ──────────────────────────────────────────────────────────────
 
 backup_config() {
@@ -604,6 +459,14 @@ backup_config() {
     if [[ -d "$CONFIG_DIR" ]]; then
         cp -r "$CONFIG_DIR" "$backup_dir/"
         echo -e "${GREEN}✓ Backup saved to: ${CYAN}$backup_dir${RESET}"
+        # Prune old backups
+        local backups=($(ls -td "$SCRIPT_DIR"/Backup-* 2>/dev/null))
+        if [[ ${#backups[@]} -gt $MAX_BACKUPS ]]; then
+            for ((j=$MAX_BACKUPS; j<${#backups[@]}; j++)); do
+                rm -rf "${backups[$j]}"
+                echo -e "${GRAY}  Pruned: $(basename "${backups[$j]}")${RESET}"
+            done
+        fi
     else
         echo -e "${YELLOW}⚠ No config to backup${RESET}"
     fi
@@ -611,68 +474,70 @@ backup_config() {
 }
 
 restore_config() {
-    local latest=$(ls -td "$SCRIPT_DIR"/Backup-* 2>/dev/null | head -1)
-    if [[ -n "$latest" && -d "$latest/fastfetch" ]]; then
-        rm -rf "$CONFIG_DIR"
-        cp -r "$latest/fastfetch" "$CONFIG_DIR"
-        echo -e "${GREEN}✓ Restored from: ${CYAN}$latest${RESET}"
-        sleep 1
-        fastfetch
-    else
-        echo -e "${RED}✗ No backup found${RESET}"
-        sleep 1.5
+    local backups=($(ls -td "$SCRIPT_DIR"/Backup-* 2>/dev/null))
+    if [[ ${#backups[@]} -eq 0 ]]; then
+        echo -e "${RED}✗ No backups found${RESET}"; sleep 1.5; return
+    fi
+    echo ""
+    echo -e "${ORANGE}━━━ AVAILABLE BACKUPS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    for ((j=0; j<${#backups[@]}; j++)); do
+        echo -e "  ${GREEN}[$((j+1))]${RESET} ${WHITE}$(basename "${backups[$j]}")${RESET}"
+    done
+    echo -e "${RED}  [x]${RESET} Cancel"
+    echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
+    echo -ne "\n${LIME}mt3k${WHITE}@${ORANGE}restore${RESET}\n${RED}▶${RESET} "
+    read -r choice
+    [[ "$choice" =~ ^[xX]$ ]] && return
+    if [[ "$choice" =~ ^[0-9]+$ ]]; then
+        local bi=$((10#$choice-1))
+        if [[ $bi -ge 0 && $bi -lt ${#backups[@]} ]]; then
+            local sel="${backups[$bi]}"
+            if [[ -d "$sel/fastfetch" ]]; then
+                rm -rf "$CONFIG_DIR"; cp -r "$sel/fastfetch" "$CONFIG_DIR"
+                echo -e "${GREEN}✓ Restored from: ${CYAN}$(basename "$sel")${RESET}"
+                sleep 1; fastfetch
+            else echo -e "${RED}✗ Backup corrupted${RESET}"; sleep 1.5; fi
+        else echo -e "${RED}Invalid selection${RESET}"; sleep 0.5; fi
     fi
 }
 
 # ──────────────────────────────────────────────────────────────
-# THEME APPLICATION
+# THEME APPLICATION (Enhanced)
 # ──────────────────────────────────────────────────────────────
 
 apply_theme() {
-    local idx=$1
-    local preview_only=${2:-false}
-    local theme_path="${THEME_PATHS[$idx]}"
-    local theme_name="${THEMES[$idx]}"
-    local theme_type="${THEME_TYPES[$idx]}"
-
-    if [[ "$preview_only" == true ]]; then
-        echo -e "${CYAN}Previewing ${GREEN}$theme_name${CYAN}...${RESET}"
-    else
-        echo -e "${CYAN}Applying ${GREEN}$theme_name${CYAN}...${RESET}"
-    fi
+    local idx=$1 preview_only=${2:-false}
+    local theme_path="${THEME_PATHS[$idx]}" theme_name="${THEMES[$idx]}" theme_type="${THEME_TYPES[$idx]}"
+    if [[ "$preview_only" == true ]]; then echo -e "${CYAN}Previewing ${GREEN}$theme_name${CYAN}...${RESET}"
+    else echo -e "${CYAN}Applying ${GREEN}$theme_name${CYAN}...${RESET}"; fi
     sleep 0.3
-
     if [[ "$preview_only" == true ]]; then
-        # Preview: use a temporary directory
         local tmp_config=$(mktemp -d)
         cp -r "$theme_path/fastfetch/"* "$tmp_config/"
-
         local config_file="$tmp_config/config.jsonc"
-
         if [[ "$theme_type" == "Visuals-Themes" && -f "$config_file" ]]; then
             sedi '/\"logo\": {/,/}/ s/\"type\": \".*\"/\"type\": \"'"$LOGO_PROTOCOL"'\"/' "$config_file"
             sedi "s|\"source\": \"|\"source\": \"$tmp_config/|g" "$config_file"
         fi
-
         clear
         echo -e "${CYAN}━━━ PREVIEW: ${GREEN}$theme_name ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
         echo -e "${DIM}(This is a preview only — your config is NOT changed)${RESET}\n"
-        fastfetch --config "$config_file" --show-errors 2>/dev/null || \
-            fastfetch --config "$tmp_config/config.jsonc" --show-errors
+        fastfetch --config "$config_file" --show-errors 2>/dev/null || fastfetch --config "$tmp_config/config.jsonc" --show-errors
         rm -rf "$tmp_config"
     else
-        # Apply: replace config permanently
-        rm -rf "$CONFIG_DIR"
-        mkdir -p "$CONFIG_DIR"
+        local src_config="$theme_path/fastfetch/config.jsonc"
+        [[ ! -f "$src_config" ]] && src_config="$theme_path/fastfetch/config.json"
+        validate_config "$src_config"
+        rm -rf "$CONFIG_DIR"; mkdir -p "$CONFIG_DIR"
         cp -r "$theme_path/fastfetch/"* "$CONFIG_DIR/"
-
         local config_file="$CONFIG_DIR/config.jsonc"
-
         if [[ "$theme_type" == "Visuals-Themes" && -f "$config_file" ]]; then
             sedi '/\"logo\": {/,/}/ s/\"type\": \".*\"/\"type\": \"'"$LOGO_PROTOCOL"'\"/' "$config_file"
             sedi "s|\"source\": \"|\"source\": \"$CONFIG_DIR/|g" "$config_file"
         fi
-
+        save_current_theme "$theme_name" "$theme_type"
+        add_to_history "$theme_name" "$theme_type"
+        send_notification "fastfetch-themes-mt3k" "Theme '$theme_name' applied! 🎨"
         clear
         echo -e "${CYAN}Running fastfetch with ${GREEN}$theme_name${CYAN}...${RESET}\n"
         fastfetch --show-errors
@@ -686,130 +551,281 @@ apply_theme() {
 prompt_protocol() {
     echo -e "\n${YELLOW}Choose the image rendering protocol for this theme:${RESET}"
     echo -e "${GRAY}───────────────────────────────────────────────────────────────${RESET}"
-    echo -e "${GREEN}[1]${RESET} auto          - (Default) Auto-detect. Works on Kitty, Ghostty."
-    echo -e "${GREEN}[2]${RESET} kitty         - Standard Kitty protocol. Best for Kitty terminal."
-    echo -e "${GREEN}[3]${RESET} kitty-direct  - Fastest. WezTerm, Warp, Kitty, Ghostty (PNG only)."
-    echo -e "${GREEN}[4]${RESET} iterm         - iTerm2 protocol. iTerm2, WezTerm, Konsole."
-    echo -e "${GREEN}[5]${RESET} sixel         - Sixel graphics support (foot, Contour)."
+    echo -e "${GREEN}[1]${RESET} auto          - (Default) Auto-detect."
+    echo -e "${GREEN}[2]${RESET} kitty         - Standard Kitty protocol."
+    echo -e "${GREEN}[3]${RESET} kitty-direct  - Fastest. WezTerm, Warp, Kitty, Ghostty."
+    echo -e "${GREEN}[4]${RESET} iterm         - iTerm2 protocol."
+    echo -e "${GREEN}[5]${RESET} sixel         - Sixel graphics support."
     echo -e "${GRAY}───────────────────────────────────────────────────────────────${RESET}"
-
-    local choice
     while true; do
         echo -ne "${LIME}mt3k${WHITE}@${RED}protocol${RESET}\n${RED}▶${RESET} "
         read -r choice
         case "$choice" in
-            1) LOGO_PROTOCOL="auto"; break ;;
-            2) LOGO_PROTOCOL="kitty"; break ;;
-            3) LOGO_PROTOCOL="kitty-direct"; break ;;
-            4) LOGO_PROTOCOL="iterm"; break ;;
-            5) LOGO_PROTOCOL="sixel"; break ;;
-            *) echo -e "${RED}Invalid choice. Please select 1-5.${RESET}" ;;
+            1) LOGO_PROTOCOL="auto"; break ;; 2) LOGO_PROTOCOL="kitty"; break ;;
+            3) LOGO_PROTOCOL="kitty-direct"; break ;; 4) LOGO_PROTOCOL="iterm"; break ;;
+            5) LOGO_PROTOCOL="sixel"; break ;; *) echo -e "${RED}Invalid. Select 1-5.${RESET}" ;;
         esac
     done
 }
 
 # ──────────────────────────────────────────────────────────────
-# SEARCH THEMES
+# SEARCH / RANDOM / PREVIEW (Enhanced)
 # ──────────────────────────────────────────────────────────────
 
 search_themes() {
-    echo -ne "\n${YELLOW}Search theme: ${RESET}"
-    read -r query
-
-    if [[ -z "$query" ]]; then
-        echo -e "${RED}Empty search${RESET}"
-        sleep 0.5
-        return
-    fi
-
+    echo -ne "\n${YELLOW}Search theme: ${RESET}"; read -r query
+    if [[ -z "$query" ]]; then echo -e "${RED}Empty search${RESET}"; sleep 0.5; return; fi
     local found=false
     echo -e "\n${CYAN}Results for '${WHITE}$query${CYAN}':${RESET}"
     echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
-
     for ((i=0; i<${#THEMES[@]}; i++)); do
-        local lower_name=$(echo "${THEMES[$i]}" | tr '[:upper:]' '[:lower:]')
-        local lower_query=$(echo "$query" | tr '[:upper:]' '[:lower:]')
-
-        if [[ "$lower_name" == *"$lower_query"* ]]; then
+        local ln=$(echo "${THEMES[$i]}" | tr '[:upper:]' '[:lower:]')
+        local lq=$(echo "$query" | tr '[:upper:]' '[:lower:]')
+        if [[ "$ln" == *"$lq"* ]]; then
             local color=$(get_color "${THEME_TYPES[$i]}")
-            local num=$((i+1))
-            echo -e "  ${GREEN}[${num}]${RESET} ${color}${THEMES[$i]}${RESET} ${GRAY}(${THEME_TYPES[$i]})${RESET}"
+            echo -e "  ${GREEN}[$((i+1))]${RESET} ${color}${THEMES[$i]}${RESET} ${GRAY}(${THEME_TYPES[$i]})${RESET}"
             found=true
         fi
     done
-
-    if [[ "$found" == false ]]; then
-        echo -e "  ${RED}No themes found matching '$query'${RESET}"
-        sleep 1.5
-        return
-    fi
-
+    if [[ "$found" == false ]]; then echo -e "  ${RED}No themes found matching '$query'${RESET}"; sleep 1.5; return; fi
     echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
-    echo -ne "${LIME}mt3k${WHITE}@${YELLOW}search${RESET}\n${RED}▶${RESET} "
-    read -r choice
-
+    echo -ne "${LIME}mt3k${WHITE}@${YELLOW}search${RESET}\n${RED}▶${RESET} "; read -r choice
     if [[ "$choice" =~ ^[0-9]+$ ]]; then
         local idx=$((10#$choice-1))
         if [[ $idx -ge 0 && $idx -lt ${#THEMES[@]} ]]; then
-            if [[ "${THEME_TYPES[$idx]}" == "Visuals-Themes" ]]; then
-                prompt_protocol
-            fi
+            [[ "${THEME_TYPES[$idx]}" == "Visuals-Themes" ]] && prompt_protocol
             apply_theme $idx
-            echo -e "\n${GREEN}Press enter to continue...${RESET}"
-            read -r
-        else
-            echo -e "${RED}Invalid selection${RESET}"
-            sleep 0.5
-        fi
+            echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+        else echo -e "${RED}Invalid selection${RESET}"; sleep 0.5; fi
     fi
 }
-
-# ──────────────────────────────────────────────────────────────
-# RANDOM THEME
-# ──────────────────────────────────────────────────────────────
 
 random_theme() {
-    local total=${#THEMES[@]}
-    local idx=$((RANDOM % total))
-    local theme_name="${THEMES[$idx]}"
-    local theme_type="${THEME_TYPES[$idx]}"
+    echo ""
+    echo -e "${PINK}━━━ RANDOM THEME 🎲 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${GREEN}[1]${RESET} Random from ALL"
+    echo -e "${RED}[2]${RESET} Random Large"
+    echo -e "${LIME}[3]${RESET} Random Small"
+    echo -e "${ORANGE}[4]${RESET} Random Visual"
+    echo -e "${RED}[x]${RESET} Cancel"
+    echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
+    echo -ne "\n${LIME}mt3k${WHITE}@${PINK}random${RESET}\n${RED}▶${RESET} "; read -r choice
+    local pool=() pidx=()
+    case "$choice" in
+        1) for ((i=0; i<${#THEMES[@]}; i++)); do pool+=("${THEMES[$i]}"); pidx+=($i); done ;;
+        2) for ((i=0; i<${#THEMES[@]}; i++)); do [[ "${THEME_TYPES[$i]}" == "Large-Themes" ]] && { pool+=("${THEMES[$i]}"); pidx+=($i); }; done ;;
+        3) for ((i=0; i<${#THEMES[@]}; i++)); do [[ "${THEME_TYPES[$i]}" == "Small-Themes" ]] && { pool+=("${THEMES[$i]}"); pidx+=($i); }; done ;;
+        4) for ((i=0; i<${#THEMES[@]}; i++)); do [[ "${THEME_TYPES[$i]}" == "Visuals-Themes" ]] && { pool+=("${THEMES[$i]}"); pidx+=($i); }; done ;;
+        x|X) return ;; *) echo -e "${RED}Invalid choice${RESET}"; sleep 0.5; return ;;
+    esac
+    if [[ ${#pool[@]} -eq 0 ]]; then echo -e "${RED}No themes in that category${RESET}"; sleep 1; return; fi
+    local ri=$((RANDOM % ${#pool[@]})) real_idx=${pidx[$ri]}
+    echo -e "\n${PINK}🎲 Random pick: ${WHITE}${THEMES[$real_idx]} ${GRAY}(${THEME_TYPES[$real_idx]})${RESET}"
+    [[ "${THEME_TYPES[$real_idx]}" == "Visuals-Themes" ]] && prompt_protocol
+    apply_theme $real_idx
+    echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+}
 
-    echo -e "\n${PINK}🎲 Random pick: ${WHITE}${theme_name} ${GRAY}(${theme_type})${RESET}"
-
-    if [[ "$theme_type" == "Visuals-Themes" ]]; then
-        prompt_protocol
-    fi
-
-    apply_theme $idx
-    echo -e "\n${GREEN}Press enter to continue...${RESET}"
-    read -r
+preview_theme() {
+    echo -ne "\n${CYAN}Enter theme number to preview: ${RESET}"; read -r choice
+    if [[ "$choice" =~ ^[0-9]+$ ]]; then
+        local idx=$((10#$choice-1))
+        if [[ $idx -ge 0 && $idx -lt ${#F_THEMES[@]} ]]; then
+            local real_idx=${F_IDX[$idx]}
+            [[ "${THEME_TYPES[$real_idx]}" == "Visuals-Themes" ]] && prompt_protocol
+            apply_theme $real_idx true
+            echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+        else echo -e "${RED}Invalid selection${RESET}"; sleep 0.5; fi
+    else echo -e "${RED}Invalid number${RESET}"; sleep 0.5; fi
 }
 
 # ──────────────────────────────────────────────────────────────
-# PREVIEW MODE
+# NEW FEATURES
 # ──────────────────────────────────────────────────────────────
 
-preview_theme() {
-    echo -ne "\n${CYAN}Enter theme number to preview: ${RESET}"
-    read -r choice
-
+favorites_menu() {
+    echo ""
+    echo -e "${GREEN}━━━ FAVORITES ★ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    if [[ ! -s "$FAVORITES_FILE" ]]; then
+        echo -e "${GRAY}No favorites yet. Use ${GREEN}[+]${GRAY} to add themes.${RESET}"
+        echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r; return
+    fi
+    local fav_names=() fav_indices=() fi=1
+    while IFS= read -r fn; do
+        [[ -z "$fn" ]] && continue
+        for ((i=0; i<${#THEMES[@]}; i++)); do
+            if [[ "${THEMES[$i]}" == "$fn" ]]; then
+                local color=$(get_color "${THEME_TYPES[$i]}")
+                echo -e "  ${GREEN}[$fi]${RESET} ${color}${fn} ${GRAY}(${THEME_TYPES[$i]})${RESET}"
+                fav_names+=("$fn"); fav_indices+=($i); ((fi++)); break
+            fi
+        done
+    done < "$FAVORITES_FILE"
+    if [[ ${#fav_names[@]} -eq 0 ]]; then
+        echo -e "${GRAY}No matching favorites in current themes.${RESET}"
+        echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r; return
+    fi
+    echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
+    echo -ne "\n${LIME}mt3k${WHITE}@${GREEN}favs${RESET}\n${RED}▶${RESET} "; read -r choice
     if [[ "$choice" =~ ^[0-9]+$ ]]; then
         local idx=$((10#$choice-1))
-        if [[ $idx -ge 0 && $idx -lt ${#THEMES[@]} ]]; then
-            if [[ "${THEME_TYPES[$idx]}" == "Visuals-Themes" ]]; then
-                prompt_protocol
-            fi
-            apply_theme $idx true
-            echo -e "\n${GREEN}Press enter to continue...${RESET}"
-            read -r
-        else
-            echo -e "${RED}Invalid selection${RESET}"
-            sleep 0.5
+        if [[ $idx -ge 0 && $idx -lt ${#fav_names[@]} ]]; then
+            local real_idx=${fav_indices[$idx]}
+            [[ "${THEME_TYPES[$real_idx]}" == "Visuals-Themes" ]] && prompt_protocol
+            apply_theme $real_idx
+            echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+        else echo -e "${RED}Invalid selection${RESET}"; sleep 0.5; fi
+    fi
+}
+
+add_favorite_prompt() {
+    echo -ne "\n${GREEN}Enter theme number to toggle favorite: ${RESET}"; read -r choice
+    if [[ "$choice" =~ ^[0-9]+$ ]]; then
+        local idx=$((10#$choice-1))
+        if [[ $idx -ge 0 && $idx -lt ${#F_THEMES[@]} ]]; then
+            toggle_favorite "${F_THEMES[$idx]}"
+        else echo -e "${RED}Invalid selection${RESET}"; sleep 0.5; fi
+    else echo -e "${RED}Invalid number${RESET}"; sleep 0.5; fi
+}
+
+show_history() {
+    echo ""
+    echo -e "${MAGENTA}━━━ THEME HISTORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    if [[ ! -s "$HISTORY_FILE" ]]; then
+        echo -e "${GRAY}No history yet.${RESET}"
+        echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r; return
+    fi
+    echo ""
+    tac "$HISTORY_FILE" 2>/dev/null | head -n 10 | while IFS='|' read -r ts name type; do
+        local color=$(get_color "$type")
+        echo -e "  ${GRAY}[$ts]${RESET} ${color}${name} ${GRAY}(${type})${RESET}"
+    done
+    echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
+    echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+}
+
+update_repo() {
+    echo ""
+    echo -e "${CYAN}━━━ UPDATE THEMES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    if [[ ! -d "$SCRIPT_DIR/.git" ]]; then
+        echo -e "${YELLOW}⚠ Not a git repository. Clone from GitHub to enable updates.${RESET}"
+        echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r; return
+    fi
+    if ! command -v git &>/dev/null; then
+        echo -e "${RED}✗ git is not installed${RESET}"; sleep 1.5; return
+    fi
+    echo -e "${CYAN}Checking for updates...${RESET}"
+    cd "$SCRIPT_DIR"
+    git fetch 2>/dev/null
+    local branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    local behind=$(git rev-list HEAD..origin/$branch --count 2>/dev/null)
+    if [[ "$behind" -gt 0 ]]; then
+        echo -e "${GREEN}$behind new commit(s) available!${RESET}"
+        git log --oneline HEAD..origin/$branch 2>/dev/null | head -5
+        echo -ne "\n${LIME}Pull updates? ${WHITE}[y/N]: ${RESET}"; read -r yn
+        if [[ "$yn" =~ ^[yY]$ ]]; then
+            git pull
+            echo -e "${GREEN}✓ Updated! Rescanning themes...${RESET}"
+            scan_themes; sleep 1
         fi
     else
-        echo -e "${RED}Invalid number${RESET}"
-        sleep 0.5
+        echo -e "${GREEN}✓ Already up to date!${RESET}"
     fi
+    echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+}
+
+theme_info() {
+    echo -ne "\n${YELLOW}Enter theme number for info: ${RESET}"; read -r choice
+    if [[ "$choice" =~ ^[0-9]+$ ]]; then
+        local idx=$((10#$choice-1))
+        if [[ $idx -ge 0 && $idx -lt ${#F_THEMES[@]} ]]; then
+            local ri=${F_IDX[$idx]}
+            local name="${THEMES[$ri]}" path="${THEME_PATHS[$ri]}" type="${THEME_TYPES[$ri]}"
+            local color=$(get_color "$type")
+            local fav="No"; is_favorite "$name" && fav="Yes ★"
+            echo ""
+            echo -e "${CYAN}━━━ THEME INFO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+            echo -e "${WHITE}  Name:     ${color}${name}${RESET}"
+            echo -e "${WHITE}  Category: ${color}${type}${RESET}"
+            echo -e "${WHITE}  Path:     ${GRAY}${path}${RESET}"
+            echo -e "${WHITE}  Favorite: ${GREEN}${fav}${RESET}"
+            local cf="$path/fastfetch/config.jsonc"
+            [[ ! -f "$cf" ]] && cf="$path/fastfetch/config.json"
+            if [[ -f "$cf" ]]; then
+                local sz=$(du -h "$cf" | cut -f1)
+                local mods=$(grep -c '"type"' "$cf" 2>/dev/null || echo "?")
+                echo -e "${WHITE}  Config:   ${GRAY}${sz}${RESET}"
+                echo -e "${WHITE}  Modules:  ${GRAY}~${mods} detected${RESET}"
+                if ls "$path/fastfetch/"*.{png,jpg,jpeg,gif,webp,svg} 2>/dev/null | head -1 &>/dev/null; then
+                    local ic=$(ls "$path/fastfetch/"*.{png,jpg,jpeg,gif,webp,svg} 2>/dev/null | wc -l)
+                    echo -e "${WHITE}  Images:   ${ORANGE}${ic} image(s)${RESET}"
+                fi
+                [[ -f "$path/fastfetch/ascii.txt" ]] && echo -e "${WHITE}  ASCII:    ${GREEN}$(wc -l < "$path/fastfetch/ascii.txt") lines${RESET}"
+                echo -ne "${WHITE}  Valid:    ${RESET}"
+                validate_config "$cf" && echo -e "${GREEN}✓${RESET}" || true
+            fi
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+            echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+        else echo -e "${RED}Invalid selection${RESET}"; sleep 0.5; fi
+    else echo -e "${RED}Invalid number${RESET}"; sleep 0.5; fi
+}
+
+filter_menu() {
+    echo ""
+    echo -e "${LIME}━━━ FILTER BY CATEGORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${GREEN}[0]${RESET} Show ALL themes"
+    echo -e "${RED}[1]${RESET} Large themes only"
+    echo -e "${LIME}[2]${RESET} Small themes only"
+    echo -e "${ORANGE}[3]${RESET} Visual themes only"
+    echo -e "${GRAY}───────────────────────────────────────────────────────${RESET}"
+    echo -ne "\n${LIME}mt3k${WHITE}@${LIME}filter${RESET}\n${RED}▶${RESET} "; read -r choice
+    case "$choice" in
+        0) CATEGORY_FILTER="" ;; 1) CATEGORY_FILTER="Large-Themes" ;;
+        2) CATEGORY_FILTER="Small-Themes" ;; 3) CATEGORY_FILTER="Visuals-Themes" ;;
+        *) echo -e "${RED}Invalid choice${RESET}"; sleep 0.5; return ;;
+    esac
+    apply_filter
+    echo -e "${GREEN}✓ Filter updated${RESET}"; sleep 0.5
+}
+
+slideshow() {
+    echo -ne "\n${PINK}Slideshow delay in seconds ${WHITE}[3]: ${RESET}"; read -r delay
+    [[ -z "$delay" ]] && delay=3
+    [[ -z "$LOGO_PROTOCOL" ]] && LOGO_PROTOCOL="auto"
+    echo -e "${PINK}Starting slideshow... Press ${WHITE}Ctrl+C${PINK} to stop${RESET}"; sleep 1
+    trap 'echo -e "\n${YELLOW}Slideshow stopped.${RESET}"; trap - INT; return' INT
+    for ((i=0; i<${#F_THEMES[@]}; i++)); do
+        local ri=${F_IDX[$i]}
+        clear
+        echo -e "${PINK}━━━ SLIDESHOW ${WHITE}[$((i+1))/${#F_THEMES[@]}] ${PINK}━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+        echo -e "${CYAN}Theme: ${GREEN}${F_THEMES[$i]} ${GRAY}(${F_TYPES[$i]})${RESET}"
+        echo -e "${DIM}Press Ctrl+C to stop${RESET}\n"
+        apply_theme $ri true 2>/dev/null
+        sleep "$delay"
+    done
+    trap - INT
+    echo -e "\n${GREEN}Slideshow complete! Press enter to continue...${RESET}"; read -r
+}
+
+# ──────────────────────────────────────────────────────────────
+# CLI HELP
+# ──────────────────────────────────────────────────────────────
+
+show_help() {
+    echo -e "${CYAN}fastfetch-themes-mt3k ${GRAY}v${VERSION}${RESET}"
+    echo -e "${WHITE}Auto-detecting fastfetch theme selector${RESET}"
+    echo ""
+    echo -e "${GREEN}Usage:${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET}                     ${GRAY}# Interactive mode${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--apply${RESET} NAME        ${GRAY}# Apply theme by name${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--preview${RESET} NAME      ${GRAY}# Preview theme${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--random${RESET} [CAT]     ${GRAY}# Random (large/small/visual)${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--list${RESET} [CAT]       ${GRAY}# List themes${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--search${RESET} QUERY     ${GRAY}# Search themes${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--update${RESET}           ${GRAY}# Update from git${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--favorites${RESET}        ${GRAY}# List favorites${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--history${RESET}          ${GRAY}# Show history${RESET}"
+    echo -e "  ${CYAN}./fastfetch-themes-mt3k${RESET} ${GREEN}--version${RESET} | ${GREEN}--help${RESET}"
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -817,74 +833,91 @@ preview_theme() {
 # ──────────────────────────────────────────────────────────────
 
 main() {
-    # Check dependencies first
     check_fastfetch
-
+    init_data_dir
     scan_themes
-
-    if [[ ${#THEMES[@]} -eq 0 ]]; then
-        echo -e "${RED}No themes found!${RESET}"
-        exit 1
-    fi
-
+    if [[ ${#THEMES[@]} -eq 0 ]]; then echo -e "${RED}No themes found!${RESET}"; exit 1; fi
     while true; do
         banner
         display_themes
         echo -ne "\n${LIME}mt3k${WHITE}@${RED}themes${RESET}\n${RED}▶${RESET} "
         read -r choice
-
         case "$choice" in
-            x|X|q|Q)
-                clear
-                echo -e "${RED}Goodbye!${RESET}"
-                exit 0
-                ;;
-            b|B)
-                backup_config
-                ;;
-            r|R)
-                restore_config
-                ;;
-            f|F)
-                install_nerd_fonts
-                ;;
-            s|S)
-                setup_shell
-                ;;
-            d|D)
-                random_theme
-                ;;
-            p|P)
-                preview_theme
-                ;;
-            k|K)
-                install_kitty
-                ;;
-            /|\\)
-                search_themes
-                ;;
-            ''|*[!0-9]*)
-                echo -e "${RED}Invalid selection${RESET}"
-                sleep 0.5
-                ;;
+            x|X|q|Q) clear; echo -e "${RED}Goodbye!${RESET}"; exit 0 ;;
+            b|B) backup_config ;; r|R) restore_config ;;
+            f|F) install_nerd_fonts ;; s|S) setup_shell ;;
+            d|D) random_theme ;; p|P) preview_theme ;;
+            k|K) install_kitty ;; /|\\) search_themes ;;
+            u|U) update_repo ;; v|V) favorites_menu ;;
+            h|H) show_history ;; c|C) filter_menu ;;
+            w|W) slideshow ;; i|I) theme_info ;;
+            +) add_favorite_prompt ;;
+            ''|*[!0-9]*) echo -e "${RED}Invalid selection${RESET}"; sleep 0.5 ;;
             *)
                 local idx=$((10#$choice-1))
-                if [[ $idx -ge 0 && $idx -lt ${#THEMES[@]} ]]; then
-                    # Check if visual theme - prompt for protocol first
-                    if [[ "${THEME_TYPES[$idx]}" == "Visuals-Themes" ]]; then
-                        prompt_protocol
-                    fi
-                    apply_theme $idx
-
-                    echo -e "\n${GREEN}Press enter to continue...${RESET}"
-                    read -r
-                else
-                    echo -e "${RED}Invalid selection${RESET}"
-                    sleep 0.5
-                fi
+                if [[ $idx -ge 0 && $idx -lt ${#F_THEMES[@]} ]]; then
+                    local real_idx=${F_IDX[$idx]}
+                    [[ "${THEME_TYPES[$real_idx]}" == "Visuals-Themes" ]] && prompt_protocol
+                    apply_theme $real_idx
+                    echo -e "\n${GREEN}Press enter to continue...${RESET}"; read -r
+                else echo -e "${RED}Invalid selection${RESET}"; sleep 0.5; fi
                 ;;
         esac
     done
 }
+
+# CLI argument parsing
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        --help|-h) show_help; exit 0 ;;
+        --version|-V) echo "fastfetch-themes-mt3k v$VERSION"; exit 0 ;;
+        --list|-l)
+            scan_themes
+            if [[ -n "$2" ]]; then
+                case "$2" in large|L) CATEGORY_FILTER="Large-Themes" ;; small|S) CATEGORY_FILTER="Small-Themes" ;; visual|V) CATEGORY_FILTER="Visuals-Themes" ;; esac
+                apply_filter
+            fi
+            for ((i=0; i<${#F_THEMES[@]}; i++)); do echo "${F_THEMES[$i]} (${F_TYPES[$i]})"; done; exit 0 ;;
+        --apply|-a)
+            check_fastfetch; init_data_dir; scan_themes
+            idx=$(find_theme_by_name "$2")
+            if [[ -n "$idx" ]]; then
+                [[ "${THEME_TYPES[$idx]}" == "Visuals-Themes" ]] && LOGO_PROTOCOL="${3:-auto}"
+                apply_theme $idx; exit 0
+            else echo "Theme '$2' not found"; exit 1; fi ;;
+        --preview)
+            check_fastfetch; init_data_dir; scan_themes
+            idx=$(find_theme_by_name "$2")
+            if [[ -n "$idx" ]]; then
+                [[ "${THEME_TYPES[$idx]}" == "Visuals-Themes" ]] && LOGO_PROTOCOL="${3:-auto}"
+                apply_theme $idx true; exit 0
+            else echo "Theme '$2' not found"; exit 1; fi ;;
+        --random)
+            check_fastfetch; init_data_dir; scan_themes
+            if [[ -n "$2" ]]; then
+                case "$2" in large|L) CATEGORY_FILTER="Large-Themes" ;; small|S) CATEGORY_FILTER="Small-Themes" ;; visual|V) CATEGORY_FILTER="Visuals-Themes" ;; esac
+                apply_filter
+            fi
+            ri=$((RANDOM % ${#F_THEMES[@]})); real_idx=${F_IDX[$ri]}
+            [[ "${THEME_TYPES[$real_idx]}" == "Visuals-Themes" ]] && LOGO_PROTOCOL="auto"
+            echo -e "${PINK}🎲 ${THEMES[$real_idx]} (${THEME_TYPES[$real_idx]})${RESET}"
+            apply_theme $real_idx; exit 0 ;;
+        --search)
+            scan_themes
+            for ((i=0; i<${#THEMES[@]}; i++)); do
+                ln=$(echo "${THEMES[$i]}" | tr '[:upper:]' '[:lower:]')
+                lq=$(echo "$2" | tr '[:upper:]' '[:lower:]')
+                [[ "$ln" == *"$lq"* ]] && echo "${THEMES[$i]} (${THEME_TYPES[$i]})"
+            done; exit 0 ;;
+        --update) update_repo; exit 0 ;;
+        --favorites) init_data_dir; [[ -s "$FAVORITES_FILE" ]] && cat "$FAVORITES_FILE" || echo "No favorites"; exit 0 ;;
+        --history)
+            init_data_dir
+            if [[ -s "$HISTORY_FILE" ]]; then
+                tail -n 10 "$HISTORY_FILE" | while IFS='|' read -r ts n t; do echo "[$ts] $n ($t)"; done
+            else echo "No history"; fi; exit 0 ;;
+        *) echo "Unknown option: $1. Use --help"; exit 1 ;;
+    esac
+fi
 
 main "$@"
