@@ -250,6 +250,10 @@ Install the GPU-accelerated Kitty terminal for image protocol support:
 
 Install a terminal hacker layout with Kitty splits — cmatrix, btop, cava, tty-clock, genact, and pipes.sh all running simultaneously:
 
+<p align="center">
+  <img src="Screenshots/HackerMode.png" alt="Hacker Mode" width="100%">
+</p>
+
 ```
 ┌──────────────┬──────────────┐
 │              │              │
