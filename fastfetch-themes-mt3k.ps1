@@ -178,40 +178,38 @@ function Install-NerdFonts {
 function Install-VisualTerminal {
     Write-Host ""; Write-ColorLine "=== VISUAL TERMINAL INSTALLER =============================" "DarkYellow"
     Write-ColorLine "Install a terminal with better support for Visual themes." "White"
-    Write-ColorLine "Kitty/Ghostty-style terminals usually render image protocols best." "Gray"; Write-Host ""
-    Write-Color "[1]" "Green"; Write-ColorLine " Kitty via winget       - GPU terminal with Kitty graphics" "Gray"
-    Write-Color "[2]" "Green"; Write-ColorLine " Kitty via scoop        - Scoop package manager" "Gray"
-    Write-Color "[3]" "Green"; Write-ColorLine " Kitty via choco        - Chocolatey package manager" "Gray"
-    Write-Color "[4]" "Green"; Write-ColorLine " Kitty from GitHub      - Download latest release" "Gray"
-    Write-Color "[5]" "Green"; Write-ColorLine " winghostty via winget  - Ghostty-style Windows package" "Gray"
-    Write-Color "[6]" "Green"; Write-ColorLine " Warp via winget        - Modern terminal" "Gray"
+    Write-ColorLine "On Windows, WezTerm or winghostty are better choices than Warp for image themes." "Gray"; Write-Host ""
+    Write-Color "[1]" "Green"; Write-ColorLine " WezTerm via winget         - Recommended stable terminal" "Gray"
+    Write-Color "[2]" "Green"; Write-ColorLine " WezTerm nightly via winget - Newer builds" "Gray"
+    Write-Color "[3]" "Green"; Write-ColorLine " winghostty via winget      - Ghostty-style Windows package" "Gray"
+    Write-Color "[4]" "Green"; Write-ColorLine " Chafa via winget           - Fallback for Windows Terminal" "Gray"
     Write-Color "[x]" "Red"; Write-ColorLine " Cancel" "White"
     Write-ColorLine "-----------------------------------------------------------" "Gray"
     Write-Host ""; Write-Color "mt3k" "Green"; Write-Color "@" "White"; Write-ColorLine "terminal" "DarkYellow"
     Write-Color "> " "Red"; $choice = Read-Host
     switch ($choice) {
-        "1" { if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }; winget install --id kovidgoyal.kitty --accept-source-agreements --accept-package-agreements }
-        "2" { if (-not (Get-Command scoop -EA SilentlyContinue)) { Write-ColorLine "X scoop not installed" "Red"; Start-Sleep 2; return }; scoop install kitty }
-        "3" { if (-not (Get-Command choco -EA SilentlyContinue)) { Write-ColorLine "X Chocolatey not installed" "Red"; Start-Sleep 2; return }; choco install kitty -y }
-        "4" {
-            try {
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                $release = Invoke-RestMethod -Uri "https://api.github.com/repos/kovidgoyal/kitty/releases/latest" -UseBasicParsing
-                $asset = $release.assets | Where-Object { $_.name -match "kitty.*\.exe$|kitty.*windows.*\.zip$" } | Select-Object -First 1
-                if ($asset) { $dl = Join-Path $env:TEMP $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $dl -UseBasicParsing; Write-ColorLine "Downloaded: $dl" "Green" }
-                else { Write-ColorLine "No Windows release found" "Yellow" }
-            } catch { Write-ColorLine "X Failed to download" "Red" }
-        }
-        "5" {
+        "1" { if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }; winget install --id wez.wezterm --accept-source-agreements --accept-package-agreements }
+        "2" { if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }; winget install --id wez.wezterm.nightly --accept-source-agreements --accept-package-agreements }
+        "3" {
             if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }
             Write-ColorLine "! Official Ghostty for Windows was not found in winget; installing winghostty instead." "Yellow"
             winget install --id AmanThanvi.winghostty --accept-source-agreements --accept-package-agreements
         }
-        "6" { if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }; winget install --id Warp.Warp --accept-source-agreements --accept-package-agreements }
+        "4" { if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }; winget install --id hpjansson.Chafa --accept-source-agreements --accept-package-agreements }
         { $_ -match "^[xX]$" } { return }
         default { Write-ColorLine "Invalid choice" "Red"; Start-Sleep 1; return }
     }
     Write-Host ""; Write-ColorLine "Press enter to continue..." "Green"; Read-Host | Out-Null
+}
+
+function Get-PowerShellAutoStartProfile {
+    $profilePath = $PROFILE.CurrentUserCurrentHost
+    if (Test-Path $profilePath) {
+        $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+        $sharedMatch = [regex]::Match($profileContent, '^\s*\.\s+"([^"]*profile\.shared\.ps1)"', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+        if ($sharedMatch.Success) { return $sharedMatch.Groups[1].Value }
+    }
+    return $profilePath
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -222,8 +220,9 @@ function Setup-Shell {
     Write-Host ""; Write-ColorLine "=== SHELL AUTO-START SETUP ================================" "Blue"
     Write-ColorLine "This adds fastfetch to run when you open a new terminal." "White"; Write-Host ""
     $marker = "# fastfetch-themes-mt3k auto-start"
+    $endMarker = "# fastfetch-themes-mt3k auto-start end"
     $shellOptions = @()
-    $psProfile = $PROFILE.CurrentUserCurrentHost
+    $psProfile = Get-PowerShellAutoStartProfile
     Write-Color "[1]" "Green"; Write-ColorLine " PowerShell  ($psProfile)" "Gray"
     $shellOptions += @{ Name = "PowerShell"; File = $psProfile }
     $gitBashRc = "$env:USERPROFILE\.bashrc"
@@ -241,11 +240,13 @@ function Setup-Shell {
         Write-Color "Remove it? [y/N]: " "Yellow"; $yn = Read-Host
         if ($yn -match "^[yY]$") {
             $content = Get-Content $rcFile; $new = @(); $skip = $false
+            $hasEndMarker = ($content -match [regex]::Escape($endMarker)).Count -gt 0
             foreach ($line in $content) {
                 if ($line -match [regex]::Escape($marker)) { $skip = $true; continue }
                 if ($skip) {
-                    if ($shellName -eq "PowerShell" -and $line -match "^\}") { $skip = $false; continue }
-                    if ($shellName -eq "GitBash" -and $line -match "^fi$") { $skip = $false; continue }
+                    if ($line -match [regex]::Escape($endMarker)) { $skip = $false; continue }
+                    if (-not $hasEndMarker -and $shellName -eq "PowerShell" -and $line -match "^\}") { $skip = $false; continue }
+                    if (-not $hasEndMarker -and $shellName -eq "GitBash" -and $line -match "^fi$") { $skip = $false; continue }
                     continue
                 }
                 $new += $line
@@ -259,11 +260,39 @@ function Setup-Shell {
     if (-not (Test-Path $rcDir)) { New-Item -ItemType Directory -Path $rcDir -Force | Out-Null }
     if ($shellName -eq "PowerShell") {
         if (-not (Test-Path $rcFile)) { New-Item -ItemType File -Path $rcFile -Force | Out-Null }
-        $block = "`n$marker`nif (Get-Command fastfetch -ErrorAction SilentlyContinue) {`n    fastfetch`n}"
+        $block = @"
+
+$marker
+if (Get-Command fastfetch -ErrorAction SilentlyContinue) {
+    `$__ffParentName = ""
+    try {
+        `$__ffProc = Get-CimInstance Win32_Process -Filter "ProcessId=`$PID" -ErrorAction Stop
+        if (`$__ffProc.ParentProcessId) {
+            `$__ffParent = Get-CimInstance Win32_Process -Filter "ProcessId=`$(`$__ffProc.ParentProcessId)" -ErrorAction Stop
+            `$__ffParentName = `$__ffParent.Name
+        }
+    } catch {}
+
+    `$__ffSkip = `$false
+    if (`$env:CODEX_THREAD_ID -or `$env:CI) { `$__ffSkip = `$true }
+    if ((Get-ChildItem Env: -ErrorAction SilentlyContinue | Where-Object { `$_.Name -like "OPENCODE*" })) { `$__ffSkip = `$true }
+    if (`$__ffParentName -match "codex|opencode") { `$__ffSkip = `$true }
+    if (-not `$__ffSkip) { fastfetch }
+    Remove-Variable __ffParentName,__ffProc,__ffParent,__ffSkip -ErrorAction SilentlyContinue
+}
+$endMarker
+"@
         Add-Content -Path $rcFile -Value $block
     } else {
         if (-not (Test-Path $rcFile)) { New-Item -ItemType File -Path $rcFile -Force | Out-Null }
-        $block = "`n$marker`nif command -v fastfetch &>/dev/null; then`n    fastfetch`nfi"
+        $block = @"
+
+$marker
+if command -v fastfetch &>/dev/null && [ -z "`$CODEX_THREAD_ID" ] && [ -z "`$CI" ] && ! env | grep -q '^OPENCODE'; then
+    fastfetch
+fi
+$endMarker
+"@
         Add-Content -Path $rcFile -Value $block
     }
     Write-Host ""; Write-ColorLine "OK fastfetch will run when you open $shellName!" "Green"
