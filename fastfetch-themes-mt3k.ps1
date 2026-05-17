@@ -31,7 +31,11 @@ function Init-DataDir {
 }
 
 function Get-CurrentTheme {
-    if (Test-Path $CurrentFile) { return (Get-Content $CurrentFile -Raw -ErrorAction SilentlyContinue).Trim() }
+    if (Test-Path $CurrentFile) {
+        $content = Get-Content $CurrentFile -Raw -ErrorAction SilentlyContinue
+        if ($null -eq $content) { return "" }
+        return $content.Trim()
+    }
     return ""
 }
 
