@@ -172,27 +172,22 @@ function Install-NerdFonts {
 }
 
 # ──────────────────────────────────────────────────────────────
-# KITTY TERMINAL INSTALLER
+# VISUAL TERMINAL INSTALLER
 # ──────────────────────────────────────────────────────────────
 
-function Install-Kitty {
-    Write-Host ""; Write-ColorLine "=== KITTY TERMINAL INSTALLER ==============================" "DarkYellow"
-    Write-ColorLine "Kitty is a GPU-accelerated terminal with image support." "White"
-    Write-ColorLine "Required for Visual themes with kitty/kitty-direct protocol." "Gray"; Write-Host ""
-    if (Get-Command kitty -ErrorAction SilentlyContinue) {
-        $kittyVer = & kitty --version 2>$null | Select-Object -First 1
-        Write-ColorLine "OK Kitty is already installed: $kittyVer" "Green"
-        Write-ColorLine "Reinstall/update anyway?" "Yellow"
-        Write-Color "[y/N]: " "White"; $yn = Read-Host
-        if ($yn -notmatch "^[yY]$") { return }
-    }
-    Write-Color "[1]" "Green"; Write-ColorLine " winget       - Windows Package Manager (recommended)" "Gray"
-    Write-Color "[2]" "Green"; Write-ColorLine " scoop        - Scoop package manager" "Gray"
-    Write-Color "[3]" "Green"; Write-ColorLine " choco        - Chocolatey package manager" "Gray"
-    Write-Color "[4]" "Green"; Write-ColorLine " GitHub       - Download latest release" "Gray"
+function Install-VisualTerminal {
+    Write-Host ""; Write-ColorLine "=== VISUAL TERMINAL INSTALLER =============================" "DarkYellow"
+    Write-ColorLine "Install a terminal with better support for Visual themes." "White"
+    Write-ColorLine "Kitty/Ghostty-style terminals usually render image protocols best." "Gray"; Write-Host ""
+    Write-Color "[1]" "Green"; Write-ColorLine " Kitty via winget       - GPU terminal with Kitty graphics" "Gray"
+    Write-Color "[2]" "Green"; Write-ColorLine " Kitty via scoop        - Scoop package manager" "Gray"
+    Write-Color "[3]" "Green"; Write-ColorLine " Kitty via choco        - Chocolatey package manager" "Gray"
+    Write-Color "[4]" "Green"; Write-ColorLine " Kitty from GitHub      - Download latest release" "Gray"
+    Write-Color "[5]" "Green"; Write-ColorLine " winghostty via winget  - Ghostty-style Windows package" "Gray"
+    Write-Color "[6]" "Green"; Write-ColorLine " Warp via winget        - Modern terminal" "Gray"
     Write-Color "[x]" "Red"; Write-ColorLine " Cancel" "White"
     Write-ColorLine "-----------------------------------------------------------" "Gray"
-    Write-Host ""; Write-Color "mt3k" "Green"; Write-Color "@" "White"; Write-ColorLine "kitty" "DarkYellow"
+    Write-Host ""; Write-Color "mt3k" "Green"; Write-Color "@" "White"; Write-ColorLine "terminal" "DarkYellow"
     Write-Color "> " "Red"; $choice = Read-Host
     switch ($choice) {
         "1" { if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }; winget install --id kovidgoyal.kitty --accept-source-agreements --accept-package-agreements }
@@ -207,6 +202,12 @@ function Install-Kitty {
                 else { Write-ColorLine "No Windows release found" "Yellow" }
             } catch { Write-ColorLine "X Failed to download" "Red" }
         }
+        "5" {
+            if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }
+            Write-ColorLine "! Official Ghostty for Windows was not found in winget; installing winghostty instead." "Yellow"
+            winget install --id AmanThanvi.winghostty --accept-source-agreements --accept-package-agreements
+        }
+        "6" { if (-not (Get-Command winget -EA SilentlyContinue)) { Write-ColorLine "X winget not available" "Red"; Start-Sleep 2; return }; winget install --id Warp.Warp --accept-source-agreements --accept-package-agreements }
         { $_ -match "^[xX]$" } { return }
         default { Write-ColorLine "Invalid choice" "Red"; Start-Sleep 1; return }
     }
@@ -363,7 +364,7 @@ function Show-Themes {
     Write-Color "[r]" "DarkYellow"; Write-Color " Restore  " "White"; Write-ColorLine "[p] Preview" "White"
     Write-Color "[f]" "Magenta"; Write-Color " Fonts  " "White"; Write-Color "[s]" "Blue"; Write-Color " Shell    " "White"
     Write-Color "[d]" "DarkMagenta"; Write-Color " Random   " "White"; Write-ColorLine "[/] Search" "White"
-    Write-Color "[k]" "DarkYellow"; Write-Color " Kitty  " "White"; Write-Color "[u]" "Cyan"; Write-Color " Update   " "White"
+    Write-Color "[k]" "DarkYellow"; Write-Color " Term   " "White"; Write-Color "[u]" "Cyan"; Write-Color " Update   " "White"
     Write-Color "[v]" "Green"; Write-Color " Favs     " "White"; Write-ColorLine "[h] History" "White"
     Write-Color "[c]" "Green"; Write-Color " Filter " "White"; Write-Color "[w]" "Magenta"; Write-Color " Slideshow " "White"
     Write-Color "[i]" "Yellow"; Write-Color " Info    " "White"; Write-ColorLine "[+] Fav+-" "White"
@@ -796,7 +797,7 @@ function Main {
             "^[bB]$" { Backup-Config } "^[rR]$" { Restore-Config }
             "^[fF]$" { Install-NerdFonts } "^[sS]$" { Setup-Shell }
             "^[dD]$" { Random-Theme } "^[pP]$" { Preview-Theme }
-            "^[kK]$" { Install-Kitty } "^[/\\]$" { Search-Themes }
+            "^[kK]$" { Install-VisualTerminal } "^[/\\]$" { Search-Themes }
             "^[uU]$" { Update-Repo } "^[vV]$" { Favorites-Menu }
             "^[hH]$" { Show-History } "^[cC]$" { Filter-Menu }
             "^[wW]$" { Start-Slideshow } "^[iI]$" { Theme-Info }
