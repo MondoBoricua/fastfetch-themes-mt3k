@@ -59,7 +59,7 @@ cd fastfetch-themes-mt3k
 > Don't have fastfetch installed? No worries — the script auto-detects and offers to install it for you! 🚀
 
 > [!IMPORTANT]
-> **Windows users:** Visual themes need `chafa` when using Windows Terminal. Select the `chafa` protocol when applying a Visual theme. The PowerShell script will try to install `chafa` automatically if it is missing.
+> **Windows Terminal users:** Visual themes should use `chafa`. Select the `chafa` protocol when applying a Visual theme. The PowerShell script will try to install `chafa` automatically if it is missing. Linux/macOS users can keep using their terminal's native image protocol.
 
 ---
 
@@ -104,7 +104,7 @@ cd fastfetch-themes-mt3k
 ### 🔧 Tools
 
 - 🔤 **Nerd Fonts installer** (7 popular fonts)
-- 🖥️ **Visual terminal installer** — WezTerm, winghostty, chafa
+- 🖥️ **Visual terminal helpers** — platform-aware terminal/image support
 - 🐚 **Shell auto-start** setup
 - 💀 **Hacker Mode** — terminal hacker layout
 - 🔔 **Desktop notifications**
@@ -206,7 +206,7 @@ When selecting a Visual theme, choose your image rendering protocol:
 | `kitty-direct` | ⚡ Fastest    | WezTerm, Warp, Kitty, Ghostty  |
 | `iterm`        | macOS         | iTerm2, WezTerm, Konsole       |
 | `sixel`        | Legacy        | foot, Contour                  |
-| `chafa`        | Windows       | Windows Terminal fallback      |
+| `chafa`        | Windows Terminal | ANSI fallback for PowerShell |
 
 > [!NOTE]
 > On Windows Terminal, use `chafa` for Visual themes. Windows Terminal does not reliably render the native image protocols used by fastfetch Visual themes. `chafa` converts the image to ANSI/terminal art so it works in a normal PowerShell session.
@@ -246,6 +246,7 @@ Install helpers or terminals for Visual theme support:
 **Linux/macOS:**
 
 - Use a terminal that supports image protocols, such as Kitty, WezTerm, Ghostty, iTerm2, or a Sixel-capable terminal.
+- You normally do **not** need `chafa` unless you want an ANSI fallback.
 
 **Windows:**
 
@@ -255,7 +256,7 @@ Install helpers or terminals for Visual theme support:
 - winghostty via winget
 
 > [!IMPORTANT]
-> Kitty is not provided as a normal Windows terminal option here, and Warp is not recommended for these Visual themes. If you are staying in Windows Terminal, use `chafa`.
+> The Windows PowerShell installer option focuses on Windows-friendly choices. Kitty remains valid on Linux/macOS. Warp is not recommended for these Visual themes on Windows. If you are staying in Windows Terminal, use `chafa`.
 
 </details>
 
@@ -352,8 +353,8 @@ Then just run the script — your theme appears in the menu automatically! ✨
 | [fastfetch](https://github.com/fastfetch-cli/fastfetch) | Auto-installed    | Core dependency                            |
 | Bash / PowerShell                                       | Required          | Bash (Linux/macOS) or PowerShell (Windows) |
 | [Nerd Fonts](https://www.nerdfonts.com/)                | Optional          | Installable via `[f]` option               |
-| Image-capable terminal                                  | For Visual themes | Use `chafa` on Windows Terminal; terminal options via `[k]` |
-| [chafa](https://hpjansson.org/chafa/)                   | Windows Visual themes | Auto-installed when selecting `chafa`      |
+| Image-capable terminal                                  | For Visual themes | Native image protocol on Linux/macOS; `chafa` fallback on Windows Terminal |
+| [chafa](https://hpjansson.org/chafa/)                   | Windows Terminal Visual themes | Auto-installed by the PowerShell script when selecting `chafa` |
 
 ---
 
