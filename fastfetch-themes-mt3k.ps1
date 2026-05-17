@@ -447,16 +447,24 @@ function Update-VisualLogoConfig {
     $content = Get-Content $ConfigFile -Raw
     $sourceMatch = [regex]::Match($content, '"source":\s*"([^"]+)"')
     $source = if ($sourceMatch.Success) { $sourceMatch.Groups[1].Value } else { "" }
+    $widthMatch = [regex]::Match($content, '"width":\s*(\d+)')
+    $heightMatch = [regex]::Match($content, '"height":\s*(\d+)')
+    $logoWidth = if ($widthMatch.Success) { [int]$widthMatch.Groups[1].Value } else { 40 }
+    $logoHeight = if ($heightMatch.Success) { [int]$heightMatch.Groups[1].Value } else { 20 }
 
     if ($LogoProtocol -eq "chafa" -and $source -and (Get-Command chafa -ErrorAction SilentlyContinue)) {
         $imagePath = if ([System.IO.Path]::IsPathRooted($source)) { $source } else { Join-Path $BaseDir $source }
         $ansiFile = Join-Path $BaseDir "logo-chafa.ansi"
         $chafa = Get-Command chafa -ErrorAction Stop
-        $process = Start-Process -FilePath $chafa.Source -ArgumentList @("--size", "40x20", "--symbols", "block", "--colors", "full", "--format", "symbols", $imagePath) -RedirectStandardOutput $ansiFile -NoNewWindow -Wait -PassThru
+        $fallbackWidth = [Math]::Min([Math]::Max([int]($logoWidth * 1.5), 50), 80)
+        $fallbackHeight = [Math]::Min([Math]::Max([int]($logoHeight * 1.5), 25), 40)
+        $process = Start-Process -FilePath $chafa.Source -ArgumentList @("--size", "$($fallbackWidth)x$($fallbackHeight)", "--symbols", "block", "--colors", "full", "--format", "symbols", $imagePath) -RedirectStandardOutput $ansiFile -NoNewWindow -Wait -PassThru
         if ($process.ExitCode -ne 0) { throw "chafa failed to render '$imagePath'" }
         $escapedAnsi = $ansiFile -replace '\\', '/'
         $content = $content -replace '("logo":\s*\{[^}]*"type":\s*")[^"]*(")', "`$1raw`$2"
         $content = $content -replace '"source":\s*"[^"]*"', "`"source`": `"$escapedAnsi`""
+        $content = $content -replace '"width":\s*\d+', "`"width`": $fallbackWidth"
+        $content = $content -replace '"height":\s*\d+', "`"height`": $fallbackHeight"
     } else {
         $content = $content -replace '("logo":\s*\{[^}]*"type":\s*")[^"]*(")', "`$1$LogoProtocol`$2"
         $escaped = $BaseDir -replace '\\', '/'
