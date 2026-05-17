@@ -58,6 +58,9 @@ cd fastfetch-themes-mt3k
 > [!TIP]
 > Don't have fastfetch installed? No worries — the script auto-detects and offers to install it for you! 🚀
 
+> [!IMPORTANT]
+> **Windows users:** Visual themes need `chafa` when using Windows Terminal. Select the `chafa` protocol when applying a Visual theme. The PowerShell script will try to install `chafa` automatically if it is missing.
+
 ---
 
 ## ✨ Features
@@ -101,7 +104,7 @@ cd fastfetch-themes-mt3k
 ### 🔧 Tools
 
 - 🔤 **Nerd Fonts installer** (7 popular fonts)
-- 🐱 **Kitty installer** — GPU terminal
+- 🖥️ **Visual terminal installer** — WezTerm, winghostty, chafa
 - 🐚 **Shell auto-start** setup
 - 💀 **Hacker Mode** — terminal hacker layout
 - 🔔 **Desktop notifications**
@@ -186,7 +189,7 @@ Launch the interactive menu and use these keys:
 |  `d`  | 🎲 Random theme        | `w` | 🎬 Slideshow mode     |
 |  `/`  | 🔎 Search themes       | `i` | ℹ️ Theme info         |
 |  `f`  | 🔤 Install Nerd Fonts  | `u` | 🔄 Update themes      |
-|  `k`  | 🐱 Install Kitty       | `s` | 🐚 Shell auto-start   |
+|  `k`  | 🖥️ Install terminal    | `s` | 🐚 Shell auto-start   |
 |  `m`  | 💀 Hacker Mode         | `x` | 🚪 Exit               |
 
 ---
@@ -203,6 +206,16 @@ When selecting a Visual theme, choose your image rendering protocol:
 | `kitty-direct` | ⚡ Fastest    | WezTerm, Warp, Kitty, Ghostty  |
 | `iterm`        | macOS         | iTerm2, WezTerm, Konsole       |
 | `sixel`        | Legacy        | foot, Contour                  |
+| `chafa`        | Windows       | Windows Terminal fallback      |
+
+> [!NOTE]
+> On Windows Terminal, use `chafa` for Visual themes. Windows Terminal does not reliably render the native image protocols used by fastfetch Visual themes. `chafa` converts the image to ANSI/terminal art so it works in a normal PowerShell session.
+
+PowerShell example:
+
+```powershell
+.\fastfetch-themes-mt3k.ps1 apply PikachuCoder chafa
+```
 
 </details>
 
@@ -226,22 +239,23 @@ Download and install popular Nerd Fonts with a single keypress:
 </details>
 
 <details>
-<summary><h3>🐱 Kitty Terminal Installer</h3></summary>
+<summary><h3>🖥️ Visual Terminal Installer</h3></summary>
 
-Install the GPU-accelerated Kitty terminal for image protocol support:
+Install helpers or terminals for Visual theme support:
 
 **Linux/macOS:**
 
-- 📦 Package manager _(pacman, apt, dnf, zypper, brew, nix)_
-- 🌐 Official installer from kovidgoyal.net _(recommended)_
-- 📦 Flatpak
+- Use a terminal that supports image protocols, such as Kitty, WezTerm, Ghostty, iTerm2, or a Sixel-capable terminal.
 
 **Windows:**
 
-- 📦 winget _(recommended)_
-- 🥄 scoop
-- 🍫 Chocolatey
-- 📥 GitHub release download
+- `chafa` via winget/choco/scoop — recommended fallback for Windows Terminal
+- WezTerm via winget
+- WezTerm nightly via winget
+- winghostty via winget
+
+> [!IMPORTANT]
+> Kitty is not provided as a normal Windows terminal option here, and Warp is not recommended for these Visual themes. If you are staying in Windows Terminal, use `chafa`.
 
 </details>
 
@@ -284,7 +298,7 @@ hacker-mode        # Normal window
 hacker-mode --full # Fullscreen
 ```
 
-> Requires [Kitty](https://sw.kovidgoyal.net/kitty/) terminal — installable via `[k]` option.
+> Requires [Kitty](https://sw.kovidgoyal.net/kitty/) terminal. On Windows, `[k]` installs Visual theme helpers instead; Hacker Mode is mainly intended for Linux/macOS terminals with Kitty available.
 
 </details>
 
@@ -338,7 +352,8 @@ Then just run the script — your theme appears in the menu automatically! ✨
 | [fastfetch](https://github.com/fastfetch-cli/fastfetch) | Auto-installed    | Core dependency                            |
 | Bash / PowerShell                                       | Required          | Bash (Linux/macOS) or PowerShell (Windows) |
 | [Nerd Fonts](https://www.nerdfonts.com/)                | Optional          | Installable via `[f]` option               |
-| Image-capable terminal                                  | For Visual themes | Kitty installable via `[k]` option         |
+| Image-capable terminal                                  | For Visual themes | Use `chafa` on Windows Terminal; terminal options via `[k]` |
+| [chafa](https://hpjansson.org/chafa/)                   | Windows Visual themes | Auto-installed when selecting `chafa`      |
 
 ---
 
