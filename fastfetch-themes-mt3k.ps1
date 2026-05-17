@@ -451,8 +451,9 @@ function Update-VisualLogoConfig {
     if ($LogoProtocol -eq "chafa" -and $source -and (Get-Command chafa -ErrorAction SilentlyContinue)) {
         $imagePath = if ([System.IO.Path]::IsPathRooted($source)) { $source } else { Join-Path $BaseDir $source }
         $ansiFile = Join-Path $BaseDir "logo-chafa.ansi"
-        $ansiLogo = (& chafa --size 40x20 --symbols block --colors full --format symbols $imagePath) -join [Environment]::NewLine
-        [System.IO.File]::WriteAllText($ansiFile, $ansiLogo, [System.Text.UTF8Encoding]::new($false))
+        $chafa = Get-Command chafa -ErrorAction Stop
+        $process = Start-Process -FilePath $chafa.Source -ArgumentList @("--size", "40x20", "--symbols", "block", "--colors", "full", "--format", "symbols", $imagePath) -RedirectStandardOutput $ansiFile -NoNewWindow -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "chafa failed to render '$imagePath'" }
         $escapedAnsi = $ansiFile -replace '\\', '/'
         $content = $content -replace '("logo":\s*\{[^}]*"type":\s*")[^"]*(")', "`$1raw`$2"
         $content = $content -replace '"source":\s*"[^"]*"', "`"source`": `"$escapedAnsi`""
