@@ -109,6 +109,36 @@ function Check-Fastfetch {
     }
 }
 
+function Ensure-Chafa {
+    if (Get-Command chafa -ErrorAction SilentlyContinue) { return $true }
+
+    Write-Host ""; Write-ColorLine "=== chafa NOT FOUND =======================================" "Yellow"
+    Write-ColorLine "chafa is required for the Windows Terminal visual fallback." "White"
+
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-ColorLine "Installing chafa with winget..." "Cyan"
+        winget install --id hpjansson.Chafa --accept-source-agreements --accept-package-agreements
+    } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+        Write-ColorLine "Installing chafa with Chocolatey..." "Cyan"
+        choco install chafa -y
+    } elseif (Get-Command scoop -ErrorAction SilentlyContinue) {
+        Write-ColorLine "Installing chafa with Scoop..." "Cyan"
+        scoop install chafa
+    } else {
+        Write-ColorLine "X Could not detect winget, choco, or scoop." "Red"
+        Write-ColorLine "  Install manually with: winget install --id hpjansson.Chafa" "Cyan"
+        return $false
+    }
+
+    if (Get-Command chafa -ErrorAction SilentlyContinue) {
+        Write-ColorLine "OK chafa installed!" "Green"
+        return $true
+    }
+
+    Write-ColorLine "X chafa installation failed or is not on PATH yet." "Red"
+    return $false
+}
+
 # ──────────────────────────────────────────────────────────────
 # NERD FONTS INSTALLER
 # ──────────────────────────────────────────────────────────────
@@ -466,7 +496,7 @@ function Prompt-Protocol {
         switch ($choice) {
             "1" { $script:LogoProtocol = "auto"; return } "2" { $script:LogoProtocol = "kitty"; return }
             "3" { $script:LogoProtocol = "kitty-direct"; return } "4" { $script:LogoProtocol = "iterm"; return }
-            "5" { $script:LogoProtocol = "sixel"; return } "6" { $script:LogoProtocol = "chafa"; return }
+            "5" { $script:LogoProtocol = "sixel"; return } "6" { if (Ensure-Chafa) { $script:LogoProtocol = "chafa"; return } }
             default { Write-ColorLine "Invalid. Select 1-6." "Red" }
         }
     }
@@ -481,6 +511,8 @@ function Update-VisualLogoConfig {
     $heightMatch = [regex]::Match($content, '"height":\s*(\d+)')
     $logoWidth = if ($widthMatch.Success) { [int]$widthMatch.Groups[1].Value } else { 40 }
     $logoHeight = if ($heightMatch.Success) { [int]$heightMatch.Groups[1].Value } else { 20 }
+
+    if ($LogoProtocol -eq "chafa" -and -not (Ensure-Chafa)) { throw "chafa is required for the chafa visual fallback" }
 
     if ($LogoProtocol -eq "chafa" -and $source -and (Get-Command chafa -ErrorAction SilentlyContinue)) {
         $imagePath = if ([System.IO.Path]::IsPathRooted($source)) { $source } else { Join-Path $BaseDir $source }
