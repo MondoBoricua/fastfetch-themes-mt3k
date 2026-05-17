@@ -428,6 +428,7 @@ function Prompt-Protocol {
     Write-Color "[3]" "Green"; Write-ColorLine " kitty-direct  - Fastest" "White"
     Write-Color "[4]" "Green"; Write-ColorLine " iterm         - iTerm2 protocol" "White"
     Write-Color "[5]" "Green"; Write-ColorLine " sixel         - Sixel graphics" "White"
+    Write-Color "[6]" "Green"; Write-ColorLine " chafa         - Terminal-safe image fallback" "White"
     Write-ColorLine "-----------------------------------------------------------" "Gray"
     while ($true) {
         Write-Color "mt3k" "Green"; Write-Color "@" "White"; Write-ColorLine "protocol" "Red"
@@ -435,9 +436,32 @@ function Prompt-Protocol {
         switch ($choice) {
             "1" { $script:LogoProtocol = "auto"; return } "2" { $script:LogoProtocol = "kitty"; return }
             "3" { $script:LogoProtocol = "kitty-direct"; return } "4" { $script:LogoProtocol = "iterm"; return }
-            "5" { $script:LogoProtocol = "sixel"; return } default { Write-ColorLine "Invalid. Select 1-5." "Red" }
+            "5" { $script:LogoProtocol = "sixel"; return } "6" { $script:LogoProtocol = "chafa"; return }
+            default { Write-ColorLine "Invalid. Select 1-6." "Red" }
         }
     }
+}
+
+function Update-VisualLogoConfig {
+    param([string]$ConfigFile, [string]$BaseDir)
+    $content = Get-Content $ConfigFile -Raw
+    $sourceMatch = [regex]::Match($content, '"source":\s*"([^"]+)"')
+    $source = if ($sourceMatch.Success) { $sourceMatch.Groups[1].Value } else { "" }
+
+    if ($LogoProtocol -eq "chafa" -and $source -and (Get-Command chafa -ErrorAction SilentlyContinue)) {
+        $imagePath = if ([System.IO.Path]::IsPathRooted($source)) { $source } else { Join-Path $BaseDir $source }
+        $ansiFile = Join-Path $BaseDir "logo-chafa.ansi"
+        $ansiLogo = (& chafa --size 40x20 --symbols block --colors full --format symbols $imagePath) -join [Environment]::NewLine
+        [System.IO.File]::WriteAllText($ansiFile, $ansiLogo, [System.Text.UTF8Encoding]::new($false))
+        $escapedAnsi = $ansiFile -replace '\\', '/'
+        $content = $content -replace '("logo":\s*\{[^}]*"type":\s*")[^"]*(")', "`$1raw`$2"
+        $content = $content -replace '"source":\s*"[^"]*"', "`"source`": `"$escapedAnsi`""
+    } else {
+        $content = $content -replace '("logo":\s*\{[^}]*"type":\s*")[^"]*(")', "`$1$LogoProtocol`$2"
+        $escaped = $BaseDir -replace '\\', '/'
+        $content = $content -replace '"source":\s*"([^"/][^"]*)"', "`"source`": `"$escaped/`$1`""
+    }
+    Set-Content -Path $ConfigFile -Value $content -NoNewline
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -455,10 +479,7 @@ function Apply-Theme {
         Copy-Item -Path (Join-Path $themePath "fastfetch\*") -Destination $tmpConfig -Recurse
         $configFile = Join-Path $tmpConfig "config.jsonc"
         if ($themeType -eq "Visuals-Themes" -and (Test-Path $configFile)) {
-            $content = Get-Content $configFile -Raw
-            $content = $content -replace '("logo":\s*\{[^}]*"type":\s*")[^"]*(")', "`$1$LogoProtocol`$2"
-            $escaped = $tmpConfig -replace '\\', '/'; $content = $content -replace '"source":\s*"([^"/][^"]*)"', "`"source`": `"$escaped/`$1`""
-            Set-Content -Path $configFile -Value $content -NoNewline
+            Update-VisualLogoConfig -ConfigFile $configFile -BaseDir $tmpConfig
         }
         Clear-Host; Write-ColorLine "=== PREVIEW: $themeName ===============================" "Cyan"
         Write-ColorLine "(Preview only - config NOT changed)" "DarkGray"; Write-Host ""
@@ -470,10 +491,7 @@ function Apply-Theme {
         Copy-Item -Path (Join-Path $themePath "fastfetch\*") -Destination $ConfigDir -Recurse
         $configFile = Join-Path $ConfigDir "config.jsonc"
         if ($themeType -eq "Visuals-Themes" -and (Test-Path $configFile)) {
-            $content = Get-Content $configFile -Raw
-            $content = $content -replace '("logo":\s*\{[^}]*"type":\s*")[^"]*(")', "`$1$LogoProtocol`$2"
-            $escaped = $ConfigDir -replace '\\', '/'; $content = $content -replace '"source":\s*"([^"/][^"]*)"', "`"source`": `"$escaped/`$1`""
-            Set-Content -Path $configFile -Value $content -NoNewline
+            Update-VisualLogoConfig -ConfigFile $configFile -BaseDir $ConfigDir
         }
         Save-CurrentTheme $themeName $themeType
         Add-ToHistory $themeName $themeType
