@@ -105,6 +105,7 @@ cd fastfetch-themes-mt3k
 
 - 🔤 **Nerd Fonts installer** (7 popular fonts)
 - 🖥️ **Visual terminal helpers** — platform-aware terminal/image support
+- 💎 **Oh My Posh setup** — one-key Windows prompt install with atomic theme
 - 🐚 **Shell auto-start** setup
 - 💀 **Hacker Mode** — terminal hacker layout
 - 🔔 **Desktop notifications**
@@ -129,6 +130,12 @@ Skip the interactive menu and use directly from the command line:
 ./fastfetch-themes-mt3k --history                # Show history
 ./fastfetch-themes-mt3k --version                # Show version
 ./fastfetch-themes-mt3k --help                   # Show help
+```
+
+Windows PowerShell only:
+
+```powershell
+.\fastfetch-themes-mt3k.ps1 -OhMyPosh             # Install/configure Oh My Posh
 ```
 
 ---
@@ -190,7 +197,8 @@ Launch the interactive menu and use these keys:
 |  `/`  | 🔎 Search themes       | `i` | ℹ️ Theme info         |
 |  `f`  | 🔤 Install Nerd Fonts  | `u` | 🔄 Update themes      |
 |  `k`  | 🖥️ Install terminal    | `s` | 🐚 Shell auto-start   |
-|  `m`  | 💀 Hacker Mode         | `x` | 🚪 Exit               |
+|  `o`  | 💎 Oh My Posh setup    | `m` | 💀 Hacker Mode        |
+|  `x`  | 🚪 Exit                |     |                       |
 
 ---
 
@@ -300,6 +308,28 @@ hacker-mode --full # Fullscreen
 ```
 
 > Requires [Kitty](https://sw.kovidgoyal.net/kitty/) terminal. On Windows, `[k]` installs Visual theme helpers instead; Hacker Mode is mainly intended for Linux/macOS terminals with Kitty available.
+
+</details>
+
+<details>
+<summary><h3>💎 Oh My Posh Setup</h3></summary>
+
+On Windows, press `[o]` in the PowerShell menu to install Oh My Posh automatically and configure the `atomic` prompt theme.
+
+The installer:
+
+- Installs Oh My Posh with `winget`, Chocolatey, or Scoop
+- Writes the theme to `~/.config/fastfetch-themes-mt3k/oh-my-posh/atomic.omp.json`
+- Adds the Oh My Posh init block to your PowerShell profile
+- Replaces any previous fastfetch-themes-mt3k Oh My Posh profile block
+
+CLI:
+
+```powershell
+.\fastfetch-themes-mt3k.ps1 -OhMyPosh
+```
+
+> Use a Nerd Font in your terminal for the prompt icons and separators to render correctly.
 
 </details>
 

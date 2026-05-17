@@ -330,6 +330,209 @@ $endMarker
 }
 
 # ──────────────────────────────────────────────────────────────
+# OH MY POSH SETUP (Windows / PowerShell)
+# ──────────────────────────────────────────────────────────────
+
+function Get-OhMyPoshCommand {
+    if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) { return "oh-my-posh" }
+    if (Get-Command ohmyposh -ErrorAction SilentlyContinue) { return "ohmyposh" }
+    return ""
+}
+
+function Install-OhMyPoshTheme {
+    Write-Host ""; Write-ColorLine "=== OH MY POSH SETUP ======================================" "Cyan"
+    Write-ColorLine "This installs Oh My Posh and applies the atomic prompt theme." "White"
+    Write-ColorLine "PowerShell will load the theme when a new terminal opens." "Gray"; Write-Host ""
+
+    $ompCmd = Get-OhMyPoshCommand
+    if ([string]::IsNullOrEmpty($ompCmd)) {
+        $installer = ""
+        if (Get-Command winget -ErrorAction SilentlyContinue) { $installer = "winget install JanDeDobbeleer.OhMyPosh -s winget --accept-source-agreements --accept-package-agreements" }
+        elseif (Get-Command choco -ErrorAction SilentlyContinue) { $installer = "choco install oh-my-posh -y" }
+        elseif (Get-Command scoop -ErrorAction SilentlyContinue) { $installer = "scoop install oh-my-posh" }
+
+        if ([string]::IsNullOrEmpty($installer)) {
+            Write-ColorLine "X Could not detect winget, Chocolatey, or Scoop." "Red"
+            Write-ColorLine "  Install manually with: winget install JanDeDobbeleer.OhMyPosh -s winget" "Cyan"
+            Write-ColorLine "Press enter to continue..." "Green"; Read-Host | Out-Null
+            return
+        }
+
+        Write-ColorLine "Oh My Posh was not found." "Yellow"
+        Write-ColorLine "Detected installer:" "Green"
+        Write-ColorLine "  $installer" "Cyan"; Write-Host ""
+        Write-Color "Install now? [y/N]: " "Green"; $yn = Read-Host
+        if ($yn -notmatch "^[yY]$") { Write-ColorLine "Skipped." "Yellow"; Start-Sleep 1; return }
+
+        Write-ColorLine "Running: $installer" "Cyan"
+        Invoke-Expression $installer
+        $ompCmd = Get-OhMyPoshCommand
+        if ([string]::IsNullOrEmpty($ompCmd)) {
+            Write-ColorLine "! Installed, but oh-my-posh is not available on PATH yet." "Yellow"
+            Write-ColorLine "  Restart PowerShell after setup if the prompt does not load." "Gray"
+            $ompCmd = "oh-my-posh"
+        }
+    } else {
+        Write-ColorLine "OK Oh My Posh found: $ompCmd" "Green"
+    }
+
+    $ompDir = Join-Path $DataDir "oh-my-posh"
+    if (-not (Test-Path $ompDir)) { New-Item -ItemType Directory -Path $ompDir -Force | Out-Null }
+    $themeFile = Join-Path $ompDir "atomic.omp.json"
+    $themeJson = @'
+{
+  "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
+  "version": 3,
+  "final_space": true,
+  "blocks": [
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "segments": [
+        {
+          "type": "os",
+          "style": "diamond",
+          "leading_diamond": "\ue0b6",
+          "trailing_diamond": "\ue0b0",
+          "foreground": "#ffffff",
+          "background": "#00d4aa",
+          "properties": {
+            "windows": "Win"
+          }
+        },
+        {
+          "type": "path",
+          "style": "powerline",
+          "powerline_symbol": "\ue0b0",
+          "foreground": "#ffffff",
+          "background": "#ff6b6b",
+          "properties": {
+            "style": "folder"
+          }
+        },
+        {
+          "type": "git",
+          "style": "powerline",
+          "powerline_symbol": "\ue0b0",
+          "foreground": "#011627",
+          "background": "#ffd166",
+          "properties": {
+            "branch_icon": "\ue725 ",
+            "fetch_status": true,
+            "fetch_upstream_icon": true
+          }
+        },
+        {
+          "type": "executiontime",
+          "style": "powerline",
+          "powerline_symbol": "\ue0b0",
+          "foreground": "#ffffff",
+          "background": "#6c63ff",
+          "properties": {
+            "threshold": 500,
+            "style": "roundrock"
+          }
+        }
+      ]
+    },
+    {
+      "type": "prompt",
+      "alignment": "right",
+      "segments": [
+        {
+          "type": "time",
+          "style": "plain",
+          "foreground": "#00d4aa",
+          "properties": {
+            "time_format": "15:04"
+          }
+        }
+      ]
+    },
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "newline": true,
+      "segments": [
+        {
+          "type": "status",
+          "style": "plain",
+          "foreground_templates": [
+            "{{ if gt .Code 0 }}#ff6b6b{{ end }}",
+            "{{ if eq .Code 0 }}#00d4aa{{ end }}"
+          ],
+          "template": ">",
+          "properties": {
+            "always_enabled": true
+          }
+        }
+      ]
+    }
+  ]
+}
+'@
+    Set-Content -Path $themeFile -Value $themeJson -Encoding UTF8
+    try {
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/atomic.omp.json" -OutFile $themeFile -ErrorAction Stop
+    } catch {
+        $localAtomicTheme = Join-Path $HOME "OneDrive\Documents\PowerShell\themes\atomic.omp.json"
+        if (Test-Path $localAtomicTheme) {
+            Copy-Item -Path $localAtomicTheme -Destination $themeFile -Force
+        } else {
+            Write-ColorLine "! Could not download atomic. Keeping generated fallback theme." "Yellow"
+        }
+    }
+
+    $profilePath = Get-PowerShellAutoStartProfile
+    $profileDir = Split-Path -Parent $profilePath
+    if (-not (Test-Path $profileDir)) { New-Item -ItemType Directory -Path $profileDir -Force | Out-Null }
+    if (-not (Test-Path $profilePath)) { New-Item -ItemType File -Path $profilePath -Force | Out-Null }
+
+    $marker = "# fastfetch-themes-mt3k oh-my-posh"
+    $endMarker = "# fastfetch-themes-mt3k oh-my-posh end"
+    $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+    if ($profileContent -match [regex]::Escape($marker)) {
+        $lines = Get-Content $profilePath
+        $new = @(); $skip = $false
+        foreach ($line in $lines) {
+            if ($line -match [regex]::Escape($marker)) { $skip = $true; continue }
+            if ($skip) {
+                if ($line -match [regex]::Escape($endMarker)) { $skip = $false; continue }
+                continue
+            }
+            $new += $line
+        }
+        Set-Content -Path $profilePath -Value ($new -join "`n")
+        $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+    }
+
+    if ($profileContent -match "atomic\.omp\.json") {
+        Write-Host ""; Write-ColorLine "OK Oh My Posh atomic theme is already configured!" "Green"
+        Write-ColorLine "  Theme: $themeFile" "Gray"
+        Write-ColorLine "  Profile: $profilePath" "Gray"
+        Write-ColorLine "Press enter to continue..." "Green"; Read-Host | Out-Null
+        return
+    }
+
+    $escapedThemeFile = $themeFile.Replace("'", "''")
+    $block = @"
+
+$marker
+if (Get-Command $ompCmd -ErrorAction SilentlyContinue) {
+    $ompCmd init pwsh --config '$escapedThemeFile' | Invoke-Expression
+}
+$endMarker
+"@
+    Add-Content -Path $profilePath -Value $block
+
+    Write-Host ""; Write-ColorLine "OK Oh My Posh atomic theme configured!" "Green"
+    Write-ColorLine "  Theme: $themeFile" "Gray"
+    Write-ColorLine "  Profile: $profilePath" "Gray"
+    Write-ColorLine "  Restart PowerShell or run: . `$PROFILE" "Yellow"
+    Write-ColorLine "Press enter to continue..." "Green"; Read-Host | Out-Null
+}
+
+# ──────────────────────────────────────────────────────────────
 # THEME SCANNING
 # ──────────────────────────────────────────────────────────────
 
@@ -427,6 +630,7 @@ function Show-Themes {
     Write-Color "[v]" "Green"; Write-Color " Favs     " "White"; Write-ColorLine "[h] History" "White"
     Write-Color "[c]" "Green"; Write-Color " Filter " "White"; Write-Color "[w]" "Magenta"; Write-Color " Slideshow " "White"
     Write-Color "[i]" "Yellow"; Write-Color " Info    " "White"; Write-ColorLine "[+] Fav+-" "White"
+    Write-Color "[o]" "Cyan"; Write-ColorLine " Oh My Posh" "White"
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -790,6 +994,7 @@ function Show-Help {
     Write-ColorLine "  .\fastfetch-themes-mt3k.ps1 -List [CAT]       # List themes" "White"
     Write-ColorLine "  .\fastfetch-themes-mt3k.ps1 -Search QUERY     # Search" "White"
     Write-ColorLine "  .\fastfetch-themes-mt3k.ps1 -Update           # Git update" "White"
+    Write-ColorLine "  .\fastfetch-themes-mt3k.ps1 -OhMyPosh        # Install/configure Oh My Posh" "White"
     Write-ColorLine "  .\fastfetch-themes-mt3k.ps1 -ShowVersion      # Version" "White"
     Write-ColorLine "  .\fastfetch-themes-mt3k.ps1 -ShowHelp         # This help" "White"
 }
@@ -843,6 +1048,7 @@ function Main {
             }
             "^-?(Search|search)$" { Scan-Themes; $Themes | Where-Object { $_ -match [regex]::Escape($allArgs[1]) } | ForEach-Object { Write-Host $_ }; return }
             "^-?(Update|update)$" { Update-Repo; return }
+            "^-?(OhMyPosh|ohmyposh|omp)$" { Init-DataDir; Install-OhMyPoshTheme; return }
         }
     }
 
@@ -862,6 +1068,7 @@ function Main {
             "^[uU]$" { Update-Repo } "^[vV]$" { Favorites-Menu }
             "^[hH]$" { Show-History } "^[cC]$" { Filter-Menu }
             "^[wW]$" { Start-Slideshow } "^[iI]$" { Theme-Info }
+            "^[oO]$" { Install-OhMyPoshTheme }
             "^\+$" { Add-FavoritePrompt }
             "^\d+$" {
                 $idx = [int]$choice - 1
